@@ -1,5 +1,6 @@
 extern crate clap;
 extern crate mediainfo;
+extern crate rayon;
 extern crate serde;
 extern crate serde_yaml;
 extern crate walkdir;
@@ -9,39 +10,59 @@ extern crate serde_derive;
 
 use clap::{App, SubCommand};
 use mediainfo::MediaInfo;
-use std::error::Error;
-use std::fs::File;
-use std::io::{BufReader, Read};
+use rayon::prelude::*;
 
+mod config;
 mod file_scanner;
 
-// Struct representation of the YAML configuration file
-#[derive(Serialize, Deserialize, Debug)]
-struct Config {
-  paths: Vec<String>
+use config::Config;
+
+#[derive(Debug)]
+struct MediaFileInfo {
+  title: Option<String>,
+  artist: Option<String>,
+  album: Option<String>,
+  duration: u32,
+  track: Option<String>,
+  track_number: u32,
 }
 
-impl Config {
-  fn read_configuration() -> Result<Self, String> {
-    let file = match File::open("config.yaml") {
-      Ok(f) => f,
-      Err(err) => return Err(err.description().to_owned()),
-    };
-
-    let mut buf_reader = BufReader::new(file);
-    let mut contents = String::new();
-
-    if let Err(err) = buf_reader.read_to_string(&mut contents) {
-      return Err(err.description().to_owned());
-    }
-
-    let config = match serde_yaml::from_str(&contents) {
-      Ok(c) => c,
-      Err(err) => return Err(format!("failed to parse yaml config: {:?}", err)),
-    };
-    
-    Ok(config)
+impl MediaFileInfo {
+  #[inline]
+  fn is_default_values(&self) -> bool {
+    self.title  == None &&
+    self.artist == None &&
+    self.album  == None &&
+    self.track  == None &&
+    self.duration == 0 &&
+    self.track_number == 0
   }
+}
+
+fn get_media_file_info(path: &String) -> Option<(&String, MediaFileInfo)> {
+  let mut media_info = MediaInfo::new();
+
+  media_info.open(path).unwrap();
+
+  // Filter out any file without an audio stream
+  let audio_streams = media_info.get_with_default_options("AudioCount");
+  if let Err(_) = audio_streams {
+    return None;
+  }
+
+  // Store the most relevant details in a struct for easy access
+  let file_info = MediaFileInfo {
+    title:        media_info.get_title().ok(),
+    artist:       media_info.get_performer().ok(),
+    album:        media_info.get_album().ok(),
+    duration:     media_info.get_duration_ms().unwrap_or(0),
+    track:        media_info.get_track_name().ok(),
+    track_number: media_info.get_track_number().unwrap_or(0),
+  };
+
+  media_info.close();
+
+  Some((path, file_info))
 }
 
 // Main entrypoint for the program
@@ -58,16 +79,29 @@ fn main() {
   if let Some(matches) = matches.subcommand_matches("scan") {
     println!("matched: {:?}", matches);
 
-    let config = Config::read_configuration();
+    let config: Config = match Config::read_configuration() {
+      Ok(res) => res,
+      Err(err) => panic!("Error reading configuration: {:?}", err),
+    };
     println!("Config: {:?}", config);
 
-    if let Ok(config) = config {
-      for path in config.paths {
-        println!("Scanning {}", path);
-        file_scanner::scan_dir(&path);
+    for path in config.paths {
+      println!("Scanning {}", path);
+
+      // TODO(mbilker): either figure out how to make rayon iterate over
+      // filtered results using something like `for_each` or make my own
+      // work queue
+      let dir_walk = file_scanner::scan_dir(&path);
+      let iter: Vec<(&String, MediaFileInfo)> = dir_walk.par_iter()
+        .filter_map(|e| get_media_file_info(e))
+        .collect();
+
+      for (file_name, info) in iter {
+        if info.is_default_values() {
+          println!("{}", file_name);
+          println!("- {:?}", info);
+        }
       }
-    } else if let Err(err) = config {
-      println!("Error reading configuration: {:?}", err);
     }
   }
 }
