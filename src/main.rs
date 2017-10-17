@@ -22,9 +22,9 @@ struct MediaFileInfo {
   title: Option<String>,
   artist: Option<String>,
   album: Option<String>,
-  duration: u32,
   track: Option<String>,
   track_number: u32,
+  duration: u32,
 }
 
 impl MediaFileInfo {
@@ -45,6 +45,9 @@ fn get_media_file_info(path: &String) -> Option<(&String, MediaFileInfo)> {
   media_info.open(path).unwrap();
 
   // Filter out any file without an audio stream
+  //
+  // `get_with_default_option` throws a ZeroLengthError if there is no value
+  // for the parameter
   let audio_streams = media_info.get_with_default_options("AudioCount");
   if let Err(_) = audio_streams {
     return None;
