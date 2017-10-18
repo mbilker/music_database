@@ -2,6 +2,8 @@ use mediainfo::MediaInfo;
 
 #[derive(Debug)]
 pub struct MediaFileInfo {
+  pub path: String,
+
   pub title: Option<String>,
   pub artist: Option<String>,
   pub album: Option<String>,
@@ -37,12 +39,14 @@ impl MediaFileInfo {
 
     // Store the most relevant details in a struct for easy access
     let file_info = MediaFileInfo {
+      path:         path.clone(),
+
       title:        media_info.get_title().ok(),
       artist:       media_info.get_performer().ok(),
       album:        media_info.get_album().ok(),
-      duration:     duration,
       track:        media_info.get_track_name().ok(),
       track_number: media_info.get_track_number().unwrap_or(0),
+      duration:     duration,
     };
 
     media_info.close();
