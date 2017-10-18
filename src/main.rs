@@ -40,9 +40,13 @@ impl MediaFileInfo {
 }
 
 fn get_media_file_info(path: &String) -> Option<(&String, MediaFileInfo)> {
-  let mut media_info = MediaInfo::new();
+  let mut media_info: MediaInfo = MediaInfo::new();
 
-  media_info.open(path).unwrap();
+  // Fail quickly if the file could not be opened
+  if let Err(_) = media_info.open(path) {
+    println!("could not open file: {}", path);
+    return None;
+  }
 
   // Filter out any file without an audio stream
   //
@@ -53,12 +57,18 @@ fn get_media_file_info(path: &String) -> Option<(&String, MediaFileInfo)> {
     return None;
   }
 
+  // Filter out any file with no duration
+  let duration = media_info.get_duration_ms().unwrap_or(0);
+  if duration == 0 {
+    return None;
+  }
+
   // Store the most relevant details in a struct for easy access
   let file_info = MediaFileInfo {
     title:        media_info.get_title().ok(),
     artist:       media_info.get_performer().ok(),
     album:        media_info.get_album().ok(),
-    duration:     media_info.get_duration_ms().unwrap_or(0),
+    duration:     duration,
     track:        media_info.get_track_name().ok(),
     track_number: media_info.get_track_number().unwrap_or(0),
   };
@@ -100,10 +110,8 @@ fn main() {
         .collect();
 
       for (file_name, info) in iter {
-        if info.is_default_values() {
-          println!("{}", file_name);
-          println!("- {:?}", info);
-        }
+        println!("{}", file_name);
+        println!("- {:?}", info);
       }
     }
   }
