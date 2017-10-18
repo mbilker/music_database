@@ -1,4 +1,5 @@
 use mediainfo::MediaInfo;
+use postgres::Connection;
 
 #[derive(Debug)]
 pub struct MediaFileInfo {
@@ -37,8 +38,14 @@ impl MediaFileInfo {
       return None;
     }
 
-    // TODO(mbilker): Filter out m3u files, they have a duration
-    // according to mediainfo
+    // Filter out m3u8 files, they have a duration according to mediainfo, but
+    // I do not want m3u8 files in the database
+    let extension = media_info.get_with_default_options("Format/Extensions");
+    if let Ok(extension) = extension {
+      if extension == "m3u8" {
+        return None;
+      }
+    }
 
     // Store the most relevant details in a struct for easy access
     let file_info = MediaFileInfo {
@@ -55,6 +62,37 @@ impl MediaFileInfo {
     media_info.close();
 
     Some(file_info)
+  }
+
+  pub fn db_insert(&self, conn: &Connection) -> bool {
+    static INSERT_QUERY: &'static str = r#"
+      INSERT INTO library (
+        title,
+        artist,
+        album,
+        track,
+        track_number,
+        duration,
+        path
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+    "#;
+
+    let res = conn.execute(INSERT_QUERY, &[
+      &self.title,
+      &self.artist,
+      &self.album,
+      &self.track,
+      &self.track_number,
+      &self.duration,
+      &self.path
+    ]);
+
+    if let Err(err) = res {
+      println!("SQL insert error: {:?}", err);
+      false
+    } else {
+      res.is_ok()
+    }
   }
 
   #[inline]
