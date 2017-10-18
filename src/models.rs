@@ -51,7 +51,7 @@ impl MediaFileInfo {
   }
 
   #[inline]
-  fn is_default_values(&self) -> bool {
+  pub fn is_default_values(&self) -> bool {
     self.title  == None &&
     self.artist == None &&
     self.album  == None &&

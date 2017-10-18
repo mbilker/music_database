@@ -1,5 +1,7 @@
 extern crate clap;
+extern crate dotenv;
 extern crate mediainfo;
+extern crate postgres;
 extern crate rayon;
 extern crate serde;
 extern crate serde_yaml;
@@ -8,15 +10,16 @@ extern crate walkdir;
 #[macro_use]
 extern crate serde_derive;
 
+mod config;
+mod database;
+mod file_scanner;
+mod models;
+
 use clap::{App, SubCommand};
 use rayon::prelude::*;
 
-mod config;
-mod file_scanner;
-mod media_file_info;
-
 use config::Config;
-use media_file_info::MediaFileInfo;
+use models::MediaFileInfo;
 
 fn scan_file(path: &String) -> Option<(&String, MediaFileInfo)> {
   if let Some(file_info) = MediaFileInfo::read_file(path) {
@@ -45,6 +48,9 @@ fn main() {
       Err(err) => panic!("Error reading configuration: {:?}", err),
     };
     println!("Config: {:?}", config);
+
+    let connection = database::establish_connection();
+    println!("Database Connection: {:?}", connection);
 
     for path in config.paths {
       println!("Scanning {}", path);
