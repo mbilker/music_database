@@ -4,6 +4,7 @@ CREATE TABLE library (
   artist	VARCHAR,
   album		VARCHAR,
   track		VARCHAR,
-  track_number	INT NOT NULL,
-  duration	INT NOT NULL
+  track_number	OID NOT NULL,
+  duration	OID NOT NULL,
+  path		VARCHAR
 )

@@ -37,6 +37,9 @@ impl MediaFileInfo {
       return None;
     }
 
+    // TODO(mbilker): Filter out m3u files, they have a duration
+    // according to mediainfo
+
     // Store the most relevant details in a struct for easy access
     let file_info = MediaFileInfo {
       path:         path.clone(),

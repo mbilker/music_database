@@ -21,14 +21,6 @@ use rayon::prelude::*;
 use config::Config;
 use models::MediaFileInfo;
 
-fn scan_file(path: &String) -> Option<(&String, MediaFileInfo)> {
-  if let Some(file_info) = MediaFileInfo::read_file(path) {
-    Some((path, file_info))
-  } else {
-    None
-  }
-}
-
 // Main entrypoint for the program
 fn main() {
   let matches = App::new("Music Card Catalog")
@@ -49,8 +41,8 @@ fn main() {
     };
     println!("Config: {:?}", config);
 
-    let connection = database::establish_connection();
-    println!("Database Connection: {:?}", connection);
+    let conn = database::establish_connection().unwrap();
+    println!("Database Connection: {:?}", conn);
 
     for path in config.paths {
       println!("Scanning {}", path);
@@ -59,13 +51,21 @@ fn main() {
       // filtered results using something like `for_each` or make my own
       // work queue
       let dir_walk = file_scanner::scan_dir(&path);
-      let iter: Vec<(&String, MediaFileInfo)> = dir_walk.par_iter()
-        .filter_map(|e| scan_file(e))
+      let files: Vec<MediaFileInfo> = dir_walk.par_iter()
+        .filter_map(|e| MediaFileInfo::read_file(e))
         .collect();
+      let iter = files.iter().take(5);
 
-      for (file_name, info) in iter {
-        println!("{}", file_name);
+      for info in iter {
+        println!("{}", info.path);
         println!("- {:?}", info);
+
+        let res = conn.execute("INSERT INTO library (title, artist, album, track, track_number, duration, path) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+          &[&info.title, &info.artist, &info.album, &info.track, &info.track_number, &info.duration, &info.path]);
+        if let Err(err) = res {
+          println!("{:?}", err);
+          panic!("failed to insert into database");
+        }
       }
     }
   }
