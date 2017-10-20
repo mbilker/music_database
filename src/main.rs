@@ -16,64 +16,10 @@ mod file_scanner;
 mod models;
 
 use clap::{App, SubCommand};
-use postgres::Connection;
-use postgres::error::UNIQUE_VIOLATION;
 use rayon::prelude::*;
 
 use config::Config;
 use models::MediaFileInfo;
-
-fn db_insert(conn: &Connection, entries: &[MediaFileInfo]) {
-  static INSERT_QUERY: &'static str = r#"
-    INSERT INTO library (
-      title,
-      artist,
-      album,
-      track,
-      track_number,
-      duration,
-      path
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-  "#;
-
-  let query = match conn.prepare(INSERT_QUERY) {
-    Ok(res) => res,
-    Err(err) => {
-      println!("{:?}", err);
-      panic!("unable to prepare query");
-    },
-  };
-
-  for info in entries {
-    let res = query.execute(&[
-      &info.title,
-      &info.artist,
-      &info.album,
-      &info.track,
-      &info.track_number,
-      &info.duration,
-      &info.path
-    ]);
-
-    if let Err(err) = res {
-      if let Some(code) = err.code() {
-        if code != &UNIQUE_VIOLATION {
-          println!("{}", info.path);
-          println!("- {:?}", info);
-          println!("SQL insert error: {:?}", err);
-
-          panic!("unexpected error with SQL insert");
-        }
-      } else {
-        println!("{}", info.path);
-        println!("- {:?}", info);
-        println!("SQL insert error: {:?}", err);
-
-        panic!("unexpected error with SQL insert");
-      }
-    }
-  }
-}
 
 // Main entrypoint for the program
 fn main() {
@@ -112,7 +58,7 @@ fn main() {
         .filter(|e| !e.is_default_values())
         .collect();
 
-      db_insert(&conn, &files);
+      database::insert_files(&conn, &files);
     }
   }
 }
