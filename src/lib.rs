@@ -1,0 +1,16 @@
+extern crate clap;
+extern crate dotenv;
+extern crate mediainfo;
+extern crate postgres;
+extern crate rayon;
+extern crate serde;
+extern crate serde_yaml;
+extern crate walkdir;
+
+#[macro_use]
+extern crate serde_derive;
+
+pub mod config;
+pub mod database;
+pub mod file_scanner;
+pub mod models;

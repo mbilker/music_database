@@ -1,25 +1,15 @@
 extern crate clap;
-extern crate dotenv;
-extern crate mediainfo;
-extern crate postgres;
 extern crate rayon;
-extern crate serde;
-extern crate serde_yaml;
-extern crate walkdir;
 
-#[macro_use]
-extern crate serde_derive;
-
-mod config;
-mod database;
-mod file_scanner;
-mod models;
+extern crate music_card_catalog;
 
 use clap::{App, SubCommand};
 use rayon::prelude::*;
 
-use config::Config;
-use models::MediaFileInfo;
+use music_card_catalog::database;
+use music_card_catalog::file_scanner;
+use music_card_catalog::config::Config;
+use music_card_catalog::models::MediaFileInfo;
 
 // Main entrypoint for the program
 fn main() {
