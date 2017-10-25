@@ -1,5 +1,6 @@
 CREATE TABLE library (
   id		SERIAL PRIMARY KEY,
+  mbid		UUID,
   title		VARCHAR,
   artist	VARCHAR,
   album		VARCHAR,
