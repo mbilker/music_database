@@ -87,9 +87,12 @@ pub fn get(path: &str) -> Result<(f64, String), FingerprintError> {
   //
   // I probably would have never figured out how to do this without the
   // reference C implementation.
-  let filtered = ictx.packets()
-    .filter(|&(ref stream, _)| stream.index() == index);
-  for (_stream, packet) in filtered {
+  for (stream, packet) in ictx.packets() {
+    // Only want packets for the audio stream
+    if stream.index() != index {
+      continue;
+    }
+
     let decoder_res = try!(decoder.decode(&packet, &mut decoded));
     if decoder_res != true {
       continue;
@@ -135,6 +138,8 @@ pub fn get(path: &str) -> Result<(f64, String), FingerprintError> {
 
   let fingerprint = chroma.fingerprint();
   if let Some(fingerprint) = fingerprint {
+    debug!(target: path, "fingerprint: {}", fingerprint);
+
     Ok((duration, fingerprint))
   } else {
     Err(FingerprintError::ChromaprintError("no fingerprint generated".to_owned()))
