@@ -18,7 +18,7 @@ impl MediaFileInfo {
 
     // Fail quickly if the file could not be opened
     if let Err(_) = media_info.open(path) {
-      println!("could not open file: {}", path);
+      error!(target: path, "could not open file: {}", path);
       return None;
     }
 
@@ -28,12 +28,14 @@ impl MediaFileInfo {
     // for the parameter
     let audio_streams = media_info.get_with_default_options("AudioCount");
     if let Err(_) = audio_streams {
+      trace!(target: path, "no audio streams");
       return None;
     }
 
     // Filter out any file with no duration
     let duration = media_info.get_duration_ms().unwrap_or(0);
     if duration == 0 {
+      trace!(target: path, "duration == 0");
       return None;
     }
 
@@ -42,6 +44,7 @@ impl MediaFileInfo {
     let extension = media_info.get_with_default_options("Format/Extensions");
     if let Ok(extension) = extension {
       if extension == "m3u8" {
+        trace!(target: path, "m3u8 playlist");
         return None;
       }
     }
