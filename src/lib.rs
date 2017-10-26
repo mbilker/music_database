@@ -10,6 +10,9 @@ extern crate serde_yaml;
 extern crate walkdir;
 
 #[macro_use]
+extern crate log;
+
+#[macro_use]
 extern crate serde_derive;
 
 pub mod config;
