@@ -21,6 +21,8 @@ impl From<ffmpeg::Error> for FingerprintError {
 }
 
 pub fn get(path: &str) -> Result<(f64, String), FingerprintError> {
+  debug!("Chromaprint version: {}", Chromaprint::version());
+
   try!(ffmpeg::init());
 
   let mut ictx = try!(ffmpeg::format::input(&path));
@@ -32,11 +34,11 @@ pub fn get(path: &str) -> Result<(f64, String), FingerprintError> {
 
     duration = stream.duration() as f64 * f64::from(stream.time_base());
     index = stream.index();
-    println!("best audio stream index: {}", index);
+    debug!(target: path, "best audio stream index: {}", index);
 
     let codec = stream.codec();
-    println!("medium: {:?}", codec.medium());
-    println!("id: {:?}", codec.id());
+    debug!(target: path, "medium: {:?}", codec.medium());
+    debug!(target: path, "id: {:?}", codec.id());
 
     let mut decoder = try!(stream.codec().decoder().audio());
     try!(decoder.set_parameters(stream.parameters()));
@@ -44,17 +46,17 @@ pub fn get(path: &str) -> Result<(f64, String), FingerprintError> {
     decoder
   };
 
-  println!("duration: {}", duration);
-  println!("bit_rate: {}", decoder.bit_rate());
-  println!("max_bit_rate: {}", decoder.max_bit_rate());
-  println!("delay: {}", decoder.delay());
-  println!("audio.rate: {}", decoder.rate());
-  println!("audio.channels: {}", decoder.channels());
-  println!("audio.format: {:?} (name: {})", decoder.format(), decoder.format().name());
-  println!("audio.frames: {}", decoder.frames());
-  println!("audio.align: {}", decoder.align());
-  println!("audio.channel_layout: {:?}", decoder.channel_layout());
-  println!("audio.frame_start: {:?}", decoder.frame_start());
+  debug!(target: path, "duration: {}", duration);
+  debug!(target: path, "bit_rate: {}", decoder.bit_rate());
+  debug!(target: path, "max_bit_rate: {}", decoder.max_bit_rate());
+  debug!(target: path, "delay: {}", decoder.delay());
+  debug!(target: path, "audio.rate: {}", decoder.rate());
+  debug!(target: path, "audio.channels: {}", decoder.channels());
+  debug!(target: path, "audio.format: {:?} (name: {})", decoder.format(), decoder.format().name());
+  debug!(target: path, "audio.frames: {}", decoder.frames());
+  debug!(target: path, "audio.align: {}", decoder.align());
+  debug!(target: path, "audio.channel_layout: {:?}", decoder.channel_layout());
+  debug!(target: path, "audio.frame_start: {:?}", decoder.frame_start());
 
   let samplerate = decoder.rate();
   let channels = decoder.channels();
@@ -70,7 +72,7 @@ pub fn get(path: &str) -> Result<(f64, String), FingerprintError> {
   // of audio based on AcoustID's reference implementation
   let stream_limit = (MAX_AUDIO_DURATION as u32) * samplerate;
   let mut stream_size = 0;
-  println!("stream_limit: {}", stream_limit);
+  debug!(target: path, "stream_limit: {}", stream_limit);
 
   // Initialize Chromaprint context
   let mut chroma = Chromaprint::new();
@@ -96,9 +98,7 @@ pub fn get(path: &str) -> Result<(f64, String), FingerprintError> {
     let mut processed = Audio::empty();
     let delay = try!(convert.run(&decoded, &mut processed));
 
-    if delay != None {
-      println!("packet size: {}, delay: {:?}, frame: {:?}", packet.size(), delay, decoded);
-    }
+    trace!(target: path, "packet size: {}, delay: {:?}, frame: {:?}", packet.size(), delay, decoded);
 
     let mut frame_size = processed.samples() as u32;
     let remaining = stream_limit - stream_size;
@@ -113,7 +113,6 @@ pub fn get(path: &str) -> Result<(f64, String), FingerprintError> {
     stream_size += frame_size;
 
     if frame_size == 0 && !stream_done {
-      println!("reached frame_size == 0 && !stream_done");
       continue;
     }
 
@@ -127,13 +126,12 @@ pub fn get(path: &str) -> Result<(f64, String), FingerprintError> {
     }
 
     if stream_done {
-      println!("reached stream_done");
       break;
     }
   }
 
   let finish_res = chroma.finish();
-  println!("finish_res: {}", finish_res);
+  debug!(target: path, "finish_res: {}", finish_res);
 
   let fingerprint = chroma.fingerprint();
   if let Some(fingerprint) = fingerprint {
