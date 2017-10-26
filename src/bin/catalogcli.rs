@@ -1,10 +1,12 @@
-extern crate chromaprint;
 extern crate clap;
+extern crate pretty_env_logger;
 extern crate rayon;
+
+#[macro_use]
+extern crate log;
 
 extern crate music_card_catalog;
 
-use chromaprint::Chromaprint;
 use clap::{App, Arg, SubCommand};
 use rayon::prelude::*;
 
@@ -16,6 +18,8 @@ use music_card_catalog::models::MediaFileInfo;
 
 // Main entrypoint for the program
 fn main() {
+  pretty_env_logger::init().unwrap();
+
   let matches = App::new("Music Card Catalog")
     .version("0.1.0")
     .author("Matt Bilker <me@mbilker.us>")
@@ -43,11 +47,11 @@ fn main() {
     Ok(res) => res,
     Err(err) => panic!("Error reading configuration: {:?}", err),
   };
-  println!("Config: {:?}", config);
+  info!("Config: {:?}", config);
 
   if let Some(_matches) = matches.subcommand_matches("scan") {
     let conn = database::establish_connection().unwrap();
-    println!("Database Connection: {:?}", conn);
+    info!("Database Connection: {:?}", conn);
 
     for path in config.paths {
       println!("Scanning {}", path);
@@ -69,7 +73,7 @@ fn main() {
     let file_path = matches.value_of("path").unwrap();
     let info = MediaFileInfo::read_file(file_path);
 
-    println!("{:?}", info);
+    debug!("{:?}", info);
 
     if let Some(info) = info {
       println!("Info for {}", file_path);
@@ -83,20 +87,17 @@ fn main() {
       println!("No info could be gathered from the file");
     }
   } else if let Some(matches) = matches.subcommand_matches("fingerprint") {
-    println!("Chromaprint version: {}", Chromaprint::version());
-
     let file_path = matches.value_of("path").unwrap();
 
     let (duration, fingerprint) = match fingerprint::get(file_path) {
       Ok(res) => res,
       Err(err) => {
-        println!("{:?}", err);
+        error!("error getting file's fingerprint: {:?}", err);
         panic!("error getting file's fingerprint");
       },
     };
 
     println!("duration: {}", duration);
     println!("fingerprint: {:?}", fingerprint);
-    eprintln!("{}", fingerprint);
   }
 }
