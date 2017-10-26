@@ -1,5 +1,7 @@
+extern crate chromaprint;
 extern crate clap;
 extern crate dotenv;
+extern crate ffmpeg;
 extern crate mediainfo;
 extern crate postgres;
 extern crate rayon;
@@ -13,4 +15,5 @@ extern crate serde_derive;
 pub mod config;
 pub mod database;
 pub mod file_scanner;
+pub mod fingerprint;
 pub mod models;
