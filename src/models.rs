@@ -13,7 +13,7 @@ pub struct MediaFileInfo {
 }
 
 impl MediaFileInfo {
-  pub fn read_file(path: &String) -> Option<Self> {
+  pub fn read_file(path: &str) -> Option<Self> {
     let mut media_info: MediaInfo = MediaInfo::new();
 
     // Fail quickly if the file could not be opened
@@ -48,7 +48,7 @@ impl MediaFileInfo {
 
     // Store the most relevant details in a struct for easy access
     let file_info = MediaFileInfo {
-      path:         path.clone(),
+      path:         path.to_owned(),
 
       title:        media_info.get_title().ok(),
       artist:       media_info.get_performer().ok(),
