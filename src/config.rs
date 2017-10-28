@@ -1,4 +1,6 @@
 use serde_yaml;
+
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::fs::File;
 use std::io::{BufReader, Read};
@@ -6,7 +8,8 @@ use std::io::{BufReader, Read};
 // Struct representation of the YAML configuration file
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
-  pub paths: Vec<String>
+  pub api_keys: BTreeMap<String, String>,
+  pub paths: Vec<String>,
 }
 
 impl Config {
