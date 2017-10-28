@@ -10,6 +10,7 @@ extern crate music_card_catalog;
 use clap::{App, Arg, SubCommand};
 use rayon::prelude::*;
 
+use music_card_catalog::acoustid;
 use music_card_catalog::database;
 use music_card_catalog::file_scanner;
 use music_card_catalog::fingerprint;
@@ -87,6 +88,11 @@ fn main() {
       println!("No info could be gathered from the file");
     }
   } else if let Some(matches) = matches.subcommand_matches("fingerprint") {
+    let api_key = match config.api_keys.get("acoustid") {
+      Some(v) => v,
+      None => panic!("No AcoustID API key defined in config.yaml"),
+    };
+
     let file_path = matches.value_of("path").unwrap();
 
     let (duration, fingerprint) = match fingerprint::get(file_path) {
@@ -99,5 +105,7 @@ fn main() {
 
     println!("duration: {}", duration);
     println!("fingerprint: {:?}", fingerprint);
+
+    acoustid::lookup(api_key, duration, &fingerprint);
   }
 }
