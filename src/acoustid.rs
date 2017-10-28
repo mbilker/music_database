@@ -6,8 +6,6 @@ use std::io::Read;
 
 static LOOKUP_URL: &'static str = "https://api.acoustid.org/v2/lookup";
 
-static API_KEY: &'static str = "";
-
 #[derive(Debug, Deserialize)]
 struct AcoustIdArtist {
   id: String,
@@ -35,10 +33,10 @@ struct AcoustIdResponse {
   results: Vec<AcoustIdResult>,
 }
 
-pub fn lookup(duration: f64, fingerprint: &String) {
+pub fn lookup(api_key: &str, duration: f64, fingerprint: &str) {
   let url = format!("{base}?format=json&client={apiKey}&duration={duration:.0}&fingerprint={fingerprint}&meta=recordings",
     base=LOOKUP_URL,
-    apiKey=API_KEY,
+    apiKey=api_key,
     duration=duration,
     fingerprint=fingerprint
   );
