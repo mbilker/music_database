@@ -1,42 +1,51 @@
-use dotenv::dotenv;
 use postgres::{Connection, TlsMode};
 use postgres::error::UNIQUE_VIOLATION;
 use std::env;
 
 use models::MediaFileInfo;
 
-pub fn establish_connection() -> Option<Connection> {
-  dotenv().ok();
+static INSERT_QUERY: &'static str = r#"
+  INSERT INTO library (
+    title,
+    artist,
+    album,
+    track,
+    track_number,
+    duration,
+    path
+  ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+"#;
 
-  let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-  let conn = Connection::connect(&*database_url, TlsMode::None);
-  
-  conn.ok()
+#[derive(Debug)]
+pub struct DatabaseConnection {
+  connection: Connection,
 }
 
-pub fn insert_files(conn: &Connection, entries: &[MediaFileInfo]) {
-  static INSERT_QUERY: &'static str = r#"
-    INSERT INTO library (
-      title,
-      artist,
-      album,
-      track,
-      track_number,
-      duration,
-      path
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-  "#;
+impl DatabaseConnection {
+  pub fn new() -> Option<Self> {
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let conn = Connection::connect(&*database_url, TlsMode::None);
 
-  let query = match conn.prepare(INSERT_QUERY) {
-    Ok(res) => res,
-    Err(err) => {
-      error!("{:#?}", err);
-      panic!("unable to prepare query");
-    },
-  };
+    match conn {
+      Ok(conn) => Some(Self {
+        connection: conn,
+      }),
+      Err(err) => panic!("error connecting to PostgreSQL: {:#?}", err),
+    }
+  }
 
-  for info in entries {
-    let res = query.execute(&[
+  pub fn insert_file(&self, info: MediaFileInfo) {
+/*
+    let query = match self.connection.prepare(INSERT_QUERY) {
+      Ok(res) => res,
+      Err(err) => {
+        error!("{:#?}", err);
+        panic!("unable to prepare query");
+      },
+    };
+*/
+
+    let res = self.connection.execute(INSERT_QUERY, &[
       &info.title,
       &info.artist,
       &info.album,

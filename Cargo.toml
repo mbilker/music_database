@@ -6,13 +6,15 @@ authors = ["Matt Bilker <me@mbilker.us>"]
 [dependencies]
 chromaprint	= "~0.1.2"
 clap		= "~2.27.0"
+crossbeam	= "~0.3.0"
 dotenv		= "~0.10.1"
 ffmpeg		= { git = "https://github.com/meh/rust-ffmpeg.git" }
 log		= "~0.3.8"
 mediainfo	= "~0.1.3"
+num_cpus	= "~1.7.0"
 postgres	= "~0.15"
 pretty_env_logger	= "~0.1.1"
-rayon		= "~0.8.2"
+ratelimit	= "~0.4.2"
 reqwest		= "~0.8.0"
 serde		= "~1.0.15"
 serde_derive	= "~1.0.15"
