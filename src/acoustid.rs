@@ -6,13 +6,13 @@ use std::io::Read;
 
 static LOOKUP_URL: &'static str = "https://api.acoustid.org/v2/lookup";
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 struct AcoustIdArtist {
   id: String,
   name: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 struct AcoustIdRecording {
   duration: Option<i32>,
   title: String,
@@ -20,7 +20,7 @@ struct AcoustIdRecording {
   artists: Option<Vec<AcoustIdArtist>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 struct AcoustIdResult {
   recordings: Option<Vec<AcoustIdRecording>>,
   score: f32,
@@ -31,6 +31,25 @@ struct AcoustIdResult {
 struct AcoustIdResponse {
   status: String,
   results: Vec<AcoustIdResult>,
+}
+
+fn handle_response(data: &str) -> Option<AcoustIdResult> {
+  let v: AcoustIdResponse = serde_json::from_str(data).unwrap();
+  println!("v: {:#?}", v);
+
+  let mut results: Vec<AcoustIdResult> = v.results;
+  results.sort_by(|a, b| {
+    if b.score > a.score {
+      Ordering::Greater
+    } else if b.score < a.score {
+      Ordering::Less
+    } else {
+      Ordering::Equal
+    }
+  });
+
+  let first_result = results.first().unwrap();
+  Some(first_result.clone())
 }
 
 pub fn lookup(api_key: &str, duration: f64, fingerprint: &str) {
@@ -47,20 +66,40 @@ pub fn lookup(api_key: &str, duration: f64, fingerprint: &str) {
   resp.read_to_string(&mut content).unwrap();
 
   println!("response: {}", content);
-
-  let v: AcoustIdResponse = serde_json::from_str(&*content).unwrap();
-  println!("v: {:#?}", v);
   
-  let mut results: Vec<AcoustIdResult> = v.results;
-  results.sort_by(|a, b| {
-    if b.score > a.score {
-      Ordering::Greater
-    } else if b.score < a.score {
-      Ordering::Less
-    } else {
-      Ordering::Equal
-    }
-  });
-  let first_result = results.first();
+  let first_result = handle_response(&*content);
   println!("top result: {:#?}", first_result);
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_handle_response() {
+    let json = r#"{
+      "status": "ok",
+      "results": [
+        {
+          "recordings": [
+            {
+              "title": "フラワリングナイト",
+              "id": "bdf27e74-cc62-43ae-8eb8-2b40d5c421a5",
+              "artists": [
+                {
+                  "id": "9f9a5476-22bd-48ef-8952-25cd8e3f1545",
+                  "name": "TAMUSIC"
+                }
+              ]
+            }
+          ],
+          "score": 0.999473,
+          "id": "f2451269-9fec-4e82-aaf8-0bdf1f069ecf"
+        }
+      ]
+    }"#;
+    
+    let first_result = handle_response(json).unwrap();
+    assert_eq!(first_result.id, "f2451269-9fec-4e82-aaf8-0bdf1f069ecf");
+  }
 }
