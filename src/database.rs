@@ -30,7 +30,7 @@ pub fn insert_files(conn: &Connection, entries: &[MediaFileInfo]) {
   let query = match conn.prepare(INSERT_QUERY) {
     Ok(res) => res,
     Err(err) => {
-      error!("{:?}", err);
+      error!("{:#?}", err);
       panic!("unable to prepare query");
     },
   };
@@ -50,15 +50,15 @@ pub fn insert_files(conn: &Connection, entries: &[MediaFileInfo]) {
       if let Some(code) = err.code() {
         if code != &UNIQUE_VIOLATION {
           info!("{}", info.path);
-          info!("- {:?}", info);
-          error!("SQL insert error: {:?}", err);
+          info!("- {:#?}", info);
+          error!("SQL insert error: {:#?}", err);
 
           panic!("unexpected error with SQL insert");
         }
       } else {
         info!("{}", info.path);
-        info!("- {:?}", info);
-        error!("SQL insert error: {:?}", err);
+        info!("- {:#?}", info);
+        error!("SQL insert error: {:#?}", err);
 
         panic!("unexpected error with SQL insert");
       }

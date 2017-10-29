@@ -28,7 +28,7 @@ impl Config {
 
     let config = match serde_yaml::from_str(&contents) {
       Ok(c) => c,
-      Err(err) => return Err(format!("failed to parse yaml config: {:?}", err)),
+      Err(err) => return Err(format!("failed to parse yaml config: {:#?}", err)),
     };
     
     Ok(config)
