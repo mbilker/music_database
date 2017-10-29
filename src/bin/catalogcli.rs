@@ -17,6 +17,33 @@ use music_card_catalog::fingerprint;
 use music_card_catalog::config::Config;
 use music_card_catalog::models::MediaFileInfo;
 
+fn print_file_info(path: &str) {
+  let info = MediaFileInfo::read_file(path);
+
+  debug!("{:?}", info);
+
+  if let Some(info) = info {
+    println!("Info for {}", path);
+    println!("Title: {}", info.title.unwrap_or_else(|| String::new()));
+    println!("Artist: {}", info.artist.unwrap_or_else(|| String::new()));
+    println!("Album: {}", info.album.unwrap_or_else(|| String::new()));
+    println!("Track: {}", info.track.unwrap_or_else(|| String::new()));
+    println!("Track Number: {}", info.track_number);
+    println!("Duration: {} ms", info.duration);
+  } else {
+    println!("No info could be gathered from the file");
+  }
+}
+
+fn print_fingerprint(api_key: &str, path: &str) {
+  let (duration, fingerprint) = fingerprint::get(path).expect("Error getting file's fingerprint");
+
+  println!("duration: {}", duration);
+  println!("fingerprint: {:?}", fingerprint);
+
+  acoustid::lookup(api_key, duration, &fingerprint);
+}
+
 // Main entrypoint for the program
 fn main() {
   pretty_env_logger::init().unwrap();
@@ -72,40 +99,12 @@ fn main() {
     }
   } else if let Some(matches) = matches.subcommand_matches("info") {
     let file_path = matches.value_of("path").unwrap();
-    let info = MediaFileInfo::read_file(file_path);
 
-    debug!("{:?}", info);
-
-    if let Some(info) = info {
-      println!("Info for {}", file_path);
-      println!("Title: {}", info.title.unwrap_or_else(|| String::new()));
-      println!("Artist: {}", info.artist.unwrap_or_else(|| String::new()));
-      println!("Album: {}", info.album.unwrap_or_else(|| String::new()));
-      println!("Track: {}", info.track.unwrap_or_else(|| String::new()));
-      println!("Track Number: {}", info.track_number);
-      println!("Duration: {} ms", info.duration);
-    } else {
-      println!("No info could be gathered from the file");
-    }
+    print_file_info(file_path);
   } else if let Some(matches) = matches.subcommand_matches("fingerprint") {
-    let api_key = match config.api_keys.get("acoustid") {
-      Some(v) => v,
-      None => panic!("No AcoustID API key defined in config.yaml"),
-    };
-
+    let api_key = config.api_keys.get("acoustid").expect("No AcoustID API key defined in config.yaml");
     let file_path = matches.value_of("path").unwrap();
 
-    let (duration, fingerprint) = match fingerprint::get(file_path) {
-      Ok(res) => res,
-      Err(err) => {
-        error!("error getting file's fingerprint: {:?}", err);
-        panic!("error getting file's fingerprint");
-      },
-    };
-
-    println!("duration: {}", duration);
-    println!("fingerprint: {:?}", fingerprint);
-
-    acoustid::lookup(api_key, duration, &fingerprint);
+    print_fingerprint(api_key, file_path);
   }
 }
