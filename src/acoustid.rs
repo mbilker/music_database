@@ -14,7 +14,7 @@ struct AcoustIdArtist {
 
 #[derive(Debug, Deserialize)]
 struct AcoustIdRecording {
-  duration: i32,
+  duration: Option<i32>,
   title: String,
   id: String,
   artists: Option<Vec<AcoustIdArtist>>,
@@ -49,7 +49,7 @@ pub fn lookup(api_key: &str, duration: f64, fingerprint: &str) {
   println!("response: {}", content);
 
   let v: AcoustIdResponse = serde_json::from_str(&*content).unwrap();
-  println!("v: {:?}", v);
+  println!("v: {:#?}", v);
   
   let mut results: Vec<AcoustIdResult> = v.results;
   results.sort_by(|a, b| {
@@ -62,5 +62,5 @@ pub fn lookup(api_key: &str, duration: f64, fingerprint: &str) {
     }
   });
   let first_result = results.first();
-  println!("top result: {:?}", first_result);
+  println!("top result: {:#?}", first_result);
 }
