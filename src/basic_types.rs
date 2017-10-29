@@ -1,3 +1,5 @@
+use uuid::Uuid;
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct AcoustIdArtist {
   pub id: String,
@@ -8,7 +10,7 @@ pub struct AcoustIdArtist {
 pub struct AcoustIdRecording {
   pub duration: Option<i32>,
   pub title: String,
-  pub id: String,
+  pub id: Uuid,
   pub artists: Option<Vec<AcoustIdArtist>>,
 }
 

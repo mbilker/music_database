@@ -1,5 +1,4 @@
 extern crate chromaprint;
-extern crate clap;
 extern crate crossbeam;
 extern crate dotenv;
 extern crate ffmpeg;
@@ -11,6 +10,7 @@ extern crate reqwest;
 extern crate serde;
 extern crate serde_json;
 extern crate serde_yaml;
+extern crate uuid;
 extern crate walkdir;
 
 #[macro_use] extern crate log;

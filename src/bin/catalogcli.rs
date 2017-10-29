@@ -10,7 +10,7 @@ extern crate music_card_catalog;
 use clap::{App, Arg, SubCommand};
 use dotenv::dotenv;
 
-use music_card_catalog::acoustid;
+use music_card_catalog::acoustid::AcoustId;
 use music_card_catalog::fingerprint;
 use music_card_catalog::config::Config;
 use music_card_catalog::models::MediaFileInfo;
@@ -34,13 +34,14 @@ fn print_file_info(path: &str) {
   }
 }
 
-fn print_fingerprint(api_key: &str, path: &str) {
+fn print_fingerprint(api_key: &String, path: &str) {
   let (duration, fingerprint) = fingerprint::get(path).expect("Error getting file's fingerprint");
 
   println!("duration: {}", duration);
   println!("fingerprint: {:?}", fingerprint);
 
-  acoustid::lookup(api_key, duration, &fingerprint);
+  let acoustid = AcoustId::new(api_key);
+  acoustid.lookup(duration, &fingerprint);
 }
 
 // Main entrypoint for the program
@@ -79,7 +80,7 @@ fn main() {
 
   if let Some(_matches) = matches.subcommand_matches("scan") {
     let processor = Processor::new(config);
-    processor.scan_dirs();
+    processor.scan_dirs().unwrap();
   } else if let Some(matches) = matches.subcommand_matches("info") {
     let file_path = matches.value_of("path").unwrap();
 

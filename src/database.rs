@@ -1,5 +1,7 @@
 use postgres::{Connection, TlsMode};
 use postgres::error::UNIQUE_VIOLATION;
+use uuid::Uuid;
+
 use std::env;
 
 use models::MediaFileInfo;
@@ -14,6 +16,12 @@ static INSERT_QUERY: &'static str = r#"
     duration,
     path
   ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+"#;
+
+static UPDATE_UUID_QUERY: &'static str = r#"
+  UPDATE library
+  SET mbid = $2
+  WHERE path = $1
 "#;
 
 #[derive(Debug)]
@@ -34,7 +42,7 @@ impl DatabaseConnection {
     }
   }
 
-  pub fn insert_file(&self, info: MediaFileInfo) {
+  pub fn insert_file(&self, info: &MediaFileInfo) {
 /*
     let query = match self.connection.prepare(INSERT_QUERY) {
       Ok(res) => res,
@@ -71,6 +79,17 @@ impl DatabaseConnection {
 
         panic!("unexpected error with SQL insert");
       }
+    }
+  }
+
+  pub fn update_file_uuid(&self, path: &str, uuid: &Uuid) {
+    let res = self.connection.execute(UPDATE_UUID_QUERY, &[
+      &path,
+      &uuid
+    ]);
+
+    if let Err(err) = res {
+      panic!("unexpected error with SQL update: {:#?}", err);
     }
   }
 }

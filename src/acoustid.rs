@@ -1,49 +1,82 @@
+use ratelimit;
 use reqwest;
 use serde_json;
 
 use std::cmp::Ordering;
 use std::io::Read;
+use std::thread;
+use std::time::Duration;
 
 use basic_types::*;
 
 static LOOKUP_URL: &'static str = "https://api.acoustid.org/v2/lookup";
 
-fn handle_response(data: &str) -> Option<AcoustIdResult> {
-  let v: AcoustIdResponse = serde_json::from_str(data).unwrap();
-  println!("v: {:#?}", v);
+pub struct AcoustId {
+  api_key: String,
 
-  let mut results: Vec<AcoustIdResult> = v.results;
-  results.sort_by(|a, b| {
-    if b.score > a.score {
-      Ordering::Greater
-    } else if b.score < a.score {
-      Ordering::Less
-    } else {
-      Ordering::Equal
-    }
-  });
-
-  let first_result = results.first().unwrap();
-  Some(first_result.clone())
+  ratelimit: ratelimit::Handle,
 }
 
-pub fn lookup(api_key: &str, duration: f64, fingerprint: &str) {
-  let url = format!("{base}?format=json&client={apiKey}&duration={duration:.0}&fingerprint={fingerprint}&meta=recordings",
-    base=LOOKUP_URL,
-    apiKey=api_key,
-    duration=duration,
-    fingerprint=fingerprint
-  );
+impl AcoustId {
+  pub fn new(api_key: &String) -> Self {
+    let mut limiter = ratelimit::Builder::new()
+      .capacity(3)
+      .quantum(1)
+      .interval(Duration::new(1, 0)) // 3 requests every 1 second
+      .build();
+    let handle = limiter.make_handle();
 
-  let mut resp = reqwest::get(&*url).unwrap();
-  
-  let mut content = String::new();
-  resp.read_to_string(&mut content).unwrap();
+    thread::spawn(move || limiter.run());
 
-  println!("response: {}", content);
-  
-  let first_result = handle_response(&*content);
-  println!("top result: {:#?}", first_result);
+    Self {
+      api_key: api_key.clone(),
+
+      ratelimit: handle,
+    }
+  }
+
+  fn handle_response(&self, data: &str) -> Option<AcoustIdResult> {
+    let v: AcoustIdResponse = serde_json::from_str(data).unwrap();
+    debug!("v: {:#?}", v);
+
+    let mut results: Vec<AcoustIdResult> = v.results;
+    results.sort_by(|a, b| {
+      if b.score > a.score {
+        Ordering::Greater
+      } else if b.score < a.score {
+        Ordering::Less
+      } else {
+        Ordering::Equal
+      }
+    });
+
+    let first_result = results.first().unwrap();
+    Some(first_result.clone())
+  }
+
+  pub fn lookup(&self, duration: f64, fingerprint: &str) -> Option<AcoustIdResult> {
+    let url = format!("{base}?format=json&client={apiKey}&duration={duration:.0}&fingerprint={fingerprint}&meta=recordings",
+      base=LOOKUP_URL,
+      apiKey=self.api_key,
+      duration=duration,
+      fingerprint=fingerprint
+    );
+
+    // TODO(mbilker): find a better way than cloning this on each invocation
+    let mut handle = self.ratelimit.clone();
+    handle.wait();
+
+    let mut resp = reqwest::get(&*url).unwrap();
+
+    let mut content = String::new();
+    resp.read_to_string(&mut content).unwrap();
+    debug!("response: {}", content);
+
+    let first_result = self.handle_response(&*content);
+    debug!("top result: {:#?}", first_result);
+
+    first_result
+  }
 }
 
 #[cfg(test)]

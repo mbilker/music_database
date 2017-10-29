@@ -1,6 +1,6 @@
 use mediainfo::MediaInfo;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct MediaFileInfo {
   pub path: String,
 
