@@ -4,3 +4,5 @@ Cargo.lock
 
 .env
 config.yaml
+
+search.sql
