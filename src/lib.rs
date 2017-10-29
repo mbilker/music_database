@@ -17,6 +17,7 @@ extern crate walkdir;
 #[macro_use] extern crate serde_derive;
 
 pub mod acoustid;
+pub mod basic_types;
 pub mod config;
 pub mod database;
 pub mod file_scanner;

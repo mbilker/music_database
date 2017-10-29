@@ -4,34 +4,9 @@ use serde_json;
 use std::cmp::Ordering;
 use std::io::Read;
 
+use basic_types::*;
+
 static LOOKUP_URL: &'static str = "https://api.acoustid.org/v2/lookup";
-
-#[derive(Clone, Debug, Deserialize)]
-struct AcoustIdArtist {
-  id: String,
-  name: String,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct AcoustIdRecording {
-  duration: Option<i32>,
-  title: String,
-  id: String,
-  artists: Option<Vec<AcoustIdArtist>>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct AcoustIdResult {
-  recordings: Option<Vec<AcoustIdRecording>>,
-  score: f32,
-  id: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct AcoustIdResponse {
-  status: String,
-  results: Vec<AcoustIdResult>,
-}
 
 fn handle_response(data: &str) -> Option<AcoustIdResult> {
   let v: AcoustIdResponse = serde_json::from_str(data).unwrap();
