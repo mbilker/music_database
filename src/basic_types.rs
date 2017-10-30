@@ -9,7 +9,7 @@ pub struct AcoustIdArtist {
 #[derive(Clone, Debug, Deserialize)]
 pub struct AcoustIdRecording {
   pub duration: Option<i32>,
-  pub title: String,
+  pub title: Option<String>,
   pub id: Uuid,
   pub artists: Option<Vec<AcoustIdArtist>>,
 }
