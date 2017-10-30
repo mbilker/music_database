@@ -13,6 +13,26 @@ pub struct MediaFileInfo {
 }
 
 impl MediaFileInfo {
+  pub fn from_db(
+    path: String,
+    title: Option<String>,
+    artist: Option<String>,
+    album: Option<String>,
+    track: Option<String>,
+    track_number: u32,
+    duration: u32
+  ) -> Self {
+    Self {
+      path: path,
+      title: title,
+      artist: artist,
+      album: album,
+      track: track,
+      track_number: track_number,
+      duration: duration
+    }
+  }
+
   pub fn read_file(path: &str) -> Option<Self> {
     let mut media_info: MediaInfo = MediaInfo::new();
 
