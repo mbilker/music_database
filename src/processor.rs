@@ -79,11 +79,16 @@ impl Processor {
         loop {
           let path = work_queue.try_pop();
           if let Some(path) = path {
-            info!("path: {}", path);
-
             // A None value indicates a non-valid file instead of an error
             if let Some(info) = MediaFileInfo::read_file(&path) {
-              if !info.is_default_values() {
+              // Get the previous value from the database if it exists
+              if let Some(db_info) = conn.fetch_file(&path) {
+                // TODO(mbilker): handle cases where the uuid is missing
+                if db_info.mbid == None {
+                }
+              } else {
+                info!("path: {}", path);
+
                 conn.insert_file(&info);
 
                 let (duration, fingerprint) = fingerprint::get(&path).unwrap();
