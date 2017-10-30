@@ -35,9 +35,9 @@ impl AcoustId {
     }
   }
 
-  fn handle_response(&self, data: &str) -> Option<AcoustIdResult> {
-    let v: AcoustIdResponse = serde_json::from_str(data).unwrap();
-    debug!("v: {:#?}", v);
+  fn handle_response(&self, data: String) -> Result<Option<AcoustIdResult>, ProcessorError> {
+    let v: AcoustIdResponse = try!(serde_json::from_str(&data));
+    debug!("v: {:?}", v);
 
     let mut results: Vec<AcoustIdResult> = v.results;
     results.sort_by(|a, b| {
@@ -50,11 +50,16 @@ impl AcoustId {
       }
     });
 
-    let first_result = results.first().unwrap();
-    Some(first_result.clone())
+    if let Some(first_result) = results.first() {
+      debug!("top result: {:?}", first_result);
+
+      Ok(Some(first_result.clone()))
+    } else {
+      Ok(None)
+    }
   }
 
-  pub fn lookup(&self, duration: f64, fingerprint: &str) -> Option<AcoustIdResult> {
+  pub fn lookup(&self, duration: f64, fingerprint: &str) -> Result<Option<AcoustIdResult>, ProcessorError> {
     let url = format!("{base}?format=json&client={apiKey}&duration={duration:.0}&fingerprint={fingerprint}&meta=recordings",
       base=LOOKUP_URL,
       apiKey=self.api_key,
@@ -66,16 +71,13 @@ impl AcoustId {
     let mut handle = self.ratelimit.clone();
     handle.wait();
 
-    let mut resp = reqwest::get(&*url).unwrap();
+    let mut resp = try!(reqwest::get(&*url));
 
     let mut content = String::new();
-    resp.read_to_string(&mut content).unwrap();
+    try!(resp.read_to_string(&mut content));
     debug!("response: {}", content);
 
-    let first_result = self.handle_response(&*content);
-    debug!("top result: {:#?}", first_result);
-
-    first_result
+    self.handle_response(content)
   }
 }
 

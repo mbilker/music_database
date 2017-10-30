@@ -1,4 +1,10 @@
+use ffmpeg;
+use reqwest;
+use serde_json;
+
 use uuid::Uuid;
+
+use std::io;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct AcoustIdArtist {
@@ -25,4 +31,43 @@ pub struct AcoustIdResult {
 pub struct AcoustIdResponse {
   pub status: String,
   pub results: Vec<AcoustIdResult>,
+}
+
+#[derive(Debug)]
+pub enum ProcessorError {
+  ApiKeyError(),
+  NoFingerprintMatch(),
+
+  RequestError(reqwest::Error),
+  JsonError(serde_json::Error),
+  IoError(io::Error),
+  ThreadError(String),
+  MutexError(String),
+
+  FFmpegError(ffmpeg::Error),
+  ChromaprintError(String),
+}
+
+impl From<reqwest::Error> for ProcessorError {
+  fn from(value: reqwest::Error) -> ProcessorError {
+    ProcessorError::RequestError(value)
+  }
+}
+
+impl From<serde_json::Error> for ProcessorError {
+  fn from(value: serde_json::Error) -> ProcessorError {
+    ProcessorError::JsonError(value)
+  }
+}
+
+impl From<io::Error> for ProcessorError {
+  fn from(value: io::Error) -> ProcessorError {
+    ProcessorError::IoError(value)
+  }
+}
+
+impl From<ffmpeg::Error> for ProcessorError {
+  fn from(value: ffmpeg::Error) -> ProcessorError {
+    ProcessorError::FFmpegError(value)
+  }
 }

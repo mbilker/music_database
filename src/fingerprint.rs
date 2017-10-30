@@ -1,36 +1,25 @@
 use chromaprint::Chromaprint;
-use ffmpeg;
+use ffmpeg::format::{self, Sample};
 use ffmpeg::frame::Audio;
-use ffmpeg::format::Sample;
+use ffmpeg::media::Type;
+use ffmpeg::software;
 
 use std;
+
+use basic_types::*;
 
 // Maximum duration global from Chromaprint's fpcalc utility
 static MAX_AUDIO_DURATION: f64 = 120.0;
 
-#[derive(Debug)]
-pub enum FingerprintError {
-  FFmpegError(ffmpeg::Error),
-  ChromaprintError(String),
-}
-
-impl From<ffmpeg::Error> for FingerprintError {
-  fn from(value: ffmpeg::Error) -> FingerprintError {
-    FingerprintError::FFmpegError(value)
-  }
-}
-
-pub fn get(path: &str) -> Result<(f64, String), FingerprintError> {
+pub fn get(path: &str) -> Result<(f64, String), ProcessorError> {
   debug!("Chromaprint version: {}", Chromaprint::version());
 
-  try!(ffmpeg::init());
-
-  let mut ictx = try!(ffmpeg::format::input(&path));
+  let mut ictx = try!(format::input(&path));
 
   let duration;
   let index;
   let mut decoder = {
-    let stream = ictx.streams().best(ffmpeg::media::Type::Audio).expect("could not find best audio stream");
+    let stream = ictx.streams().best(Type::Audio).expect("could not find best audio stream");
 
     duration = stream.duration() as f64 * f64::from(stream.time_base());
     index = stream.index();
@@ -66,7 +55,7 @@ pub fn get(path: &str) -> Result<(f64, String), FingerprintError> {
   let channel_layout = decoder.channel_layout();
   let in_format = (decoder.format(), channel_layout, samplerate);
   let out_format = (Sample::from("s16"), channel_layout, samplerate);
-  let mut convert = try!(ffmpeg::software::resampler(in_format, out_format));
+  let mut convert = try!(software::resampler(in_format, out_format));
 
   // Stream size limit used to count the number of samples for two minutes
   // of audio based on AcoustID's reference implementation
@@ -77,7 +66,7 @@ pub fn get(path: &str) -> Result<(f64, String), FingerprintError> {
   // Initialize Chromaprint context
   let mut chroma = Chromaprint::new();
   if !chroma.start(samplerate as i32, channels as i32) {
-    return Err(FingerprintError::ChromaprintError("failed to start chromaprint".to_owned()));
+    return Err(ProcessorError::ChromaprintError("failed to start chromaprint".to_owned()));
   }
 
   // Buffer frame for the current decoded packet
@@ -124,7 +113,7 @@ pub fn get(path: &str) -> Result<(f64, String), FingerprintError> {
       let data = unsafe { std::slice::from_raw_parts(processed.data(0).as_ptr() as *const u8, data_size) };
       let feed_res = chroma.feed(data);
       if !feed_res {
-        return Err(FingerprintError::ChromaprintError("chromaprint feed returned false".to_owned()));
+        return Err(ProcessorError::ChromaprintError("chromaprint feed returned false".to_owned()));
       }
     }
 
@@ -142,6 +131,6 @@ pub fn get(path: &str) -> Result<(f64, String), FingerprintError> {
 
     Ok((duration, fingerprint))
   } else {
-    Err(FingerprintError::ChromaprintError("no fingerprint generated".to_owned()))
+    Err(ProcessorError::ChromaprintError("no fingerprint generated".to_owned()))
   }
 }

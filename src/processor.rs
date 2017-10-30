@@ -1,11 +1,11 @@
 use num_cpus;
 
 use crossbeam::sync::MsQueue;
+use uuid::Uuid;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use std::io;
 use std::thread;
 
 use acoustid::AcoustId;
@@ -15,30 +15,26 @@ use file_scanner;
 use fingerprint;
 use models::MediaFileInfo;
 
+use basic_types::*;
+
+fn fetch_fingerprint_result(acoustid: &AcoustId, path: &String) -> Result<Uuid, ProcessorError> {
+  // Eat up fingerprinting errors, I mostly see them when a file is not easily
+  // parsed like WAV files
+  let (duration, fingerprint) = try!(fingerprint::get(&path));
+  
+  let result = try!(acoustid.lookup(duration, &fingerprint));
+  if let Some(result) = result {
+    if let Some(recordings) = result.recordings {
+      let first = recordings.first().unwrap();
+      return Ok(first.id.clone());
+    }
+  }
+
+  Err(ProcessorError::NoFingerprintMatch())
+}
+
 pub struct Processor {
   config: Config,
-}
-
-#[derive(Debug)]
-pub enum ProcessorError {
-  ApiKeyError(),
-
-  IoError(io::Error),
-  ThreadError(String),
-  MutexError(String),
-  FingerprintError(fingerprint::FingerprintError),
-}
-
-impl From<io::Error> for ProcessorError {
-  fn from(value: io::Error) -> ProcessorError {
-    ProcessorError::IoError(value)
-  }
-}
-
-impl From<fingerprint::FingerprintError> for ProcessorError {
-  fn from(value: fingerprint::FingerprintError) -> ProcessorError {
-    ProcessorError::FingerprintError(value)
-  }
 }
 
 impl Processor {
@@ -85,21 +81,19 @@ impl Processor {
               if let Some(db_info) = conn.fetch_file(&path) {
                 // TODO(mbilker): handle cases where the uuid is missing
                 if db_info.mbid == None {
+                  info!("path: {}", path);
+
+                  if let Ok(mbid) = fetch_fingerprint_result(&acoustid, &path) {
+                    conn.update_file_uuid(&path, &mbid);
+                  }
                 }
               } else {
                 info!("path: {}", path);
 
                 conn.insert_file(&info);
 
-                let (duration, fingerprint) = fingerprint::get(&path).unwrap();
-                let result = acoustid.lookup(duration, &fingerprint);
-                if let Some(result) = result {
-                  if let Some(recordings) = result.recordings {
-                    let first = recordings.first().unwrap();
-                    conn.update_file_uuid(&path, &first.id);
-                  }
-                } else {
-                  error!("error fetching fingerprint for: {:#?}", info);
+                if let Ok(mbid) = fetch_fingerprint_result(&acoustid, &path) {
+                  conn.update_file_uuid(&path, &mbid);
                 }
               }
             }

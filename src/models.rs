@@ -1,4 +1,5 @@
 use mediainfo::MediaInfo;
+use uuid::Uuid;
 
 #[derive(Clone, Debug)]
 pub struct MediaFileInfo {
@@ -10,6 +11,8 @@ pub struct MediaFileInfo {
   pub track: Option<String>,
   pub track_number: u32,
   pub duration: u32,
+
+  pub mbid: Option<Uuid>,
 }
 
 impl MediaFileInfo {
@@ -20,7 +23,8 @@ impl MediaFileInfo {
     album: Option<String>,
     track: Option<String>,
     track_number: u32,
-    duration: u32
+    duration: u32,
+    mbid: Option<Uuid>
   ) -> Self {
     Self {
       path: path,
@@ -29,7 +33,8 @@ impl MediaFileInfo {
       album: album,
       track: track,
       track_number: track_number,
-      duration: duration
+      duration: duration,
+      mbid: mbid
     }
   }
 
@@ -79,6 +84,8 @@ impl MediaFileInfo {
       track:        media_info.get_track_name().ok(),
       track_number: media_info.get_track_number().unwrap_or(0),
       duration:     duration,
+
+      mbid:         None,
     };
 
     media_info.close();

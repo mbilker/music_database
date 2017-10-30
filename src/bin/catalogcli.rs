@@ -1,5 +1,6 @@
 extern crate clap;
 extern crate dotenv;
+extern crate ffmpeg;
 extern crate pretty_env_logger;
 
 #[macro_use]
@@ -19,7 +20,7 @@ use music_card_catalog::processor::Processor;
 fn print_file_info(path: &str) {
   let info = MediaFileInfo::read_file(path);
 
-  debug!("{:?}", info);
+  debug!("{:#?}", info);
 
   if let Some(info) = info {
     println!("Info for {}", path);
@@ -41,13 +42,18 @@ fn print_fingerprint(api_key: &String, path: &str) {
   println!("fingerprint: {:?}", fingerprint);
 
   let acoustid = AcoustId::new(api_key);
-  acoustid.lookup(duration, &fingerprint);
+  let res = acoustid.lookup(duration, &fingerprint);
+  if let Err(err) = res {
+    error!("error looking up AcoustID for path: {}, {:#?}", path, err);
+  }
 }
 
 // Main entrypoint for the program
 fn main() {
+  // Initialize libraries
   pretty_env_logger::init().unwrap();
   dotenv().ok();
+  ffmpeg::init().unwrap();
 
   let matches = App::new("Music Card Catalog")
     .version("0.1.0")
@@ -80,7 +86,11 @@ fn main() {
 
   if let Some(_matches) = matches.subcommand_matches("scan") {
     let processor = Processor::new(config);
-    processor.scan_dirs().unwrap();
+
+    let res = processor.scan_dirs();
+    if let Err(err) = res {
+      error!("error scannning directories: {:#?}", err);
+    }
   } else if let Some(matches) = matches.subcommand_matches("info") {
     let file_path = matches.value_of("path").unwrap();
 
