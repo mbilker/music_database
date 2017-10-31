@@ -35,16 +35,21 @@ fn print_file_info(path: &str) {
   }
 }
 
-fn print_fingerprint(api_key: &String, path: &str) {
+fn print_fingerprint(api_key: &String, lookup: bool, path: &str) {
   let (duration, fingerprint) = fingerprint::get(path).expect("Error getting file's fingerprint");
 
-  println!("duration: {}", duration);
-  println!("fingerprint: {:?}", fingerprint);
+  println!("{}", fingerprint);
 
-  let acoustid = AcoustId::new(api_key);
-  let res = acoustid.lookup(duration, &fingerprint);
-  if let Err(err) = res {
-    error!("error looking up AcoustID for path: {}, {:#?}", path, err);
+  if lookup {
+    let acoustid = AcoustId::new(api_key);
+    match acoustid.lookup(duration, &fingerprint) {
+      Ok(res) => {
+        println!("Result: {:#?}", res);
+      },
+      Err(err) => {
+        error!("error looking up AcoustID for path: {}, {:#?}", path, err);
+      },
+    };
   }
 }
 
@@ -72,6 +77,9 @@ fn main() {
     .subcommand(SubCommand::with_name("fingerprint")
       .about("display a file's chromaprint fingerprint")
       .author("Matt Bilker <me@mbilker.us>")
+      .arg(Arg::with_name("lookup")
+        .help("lookup fingerprint on AcoustId")
+        .short("l"))
       .arg(Arg::with_name("path")
         .help("the file path")
         .index(1)
@@ -96,9 +104,11 @@ fn main() {
 
     print_file_info(file_path);
   } else if let Some(matches) = matches.subcommand_matches("fingerprint") {
-    let api_key = config.api_keys.get("acoustid").expect("No AcoustID API key defined in config.yaml");
     let file_path = matches.value_of("path").unwrap();
 
-    print_fingerprint(api_key, file_path);
+    let lookup = matches.is_present("lookup");
+    let api_key = config.api_keys.get("acoustid").expect("No AcoustID API key defined in config.yaml");
+
+    print_fingerprint(api_key, lookup, file_path);
   }
 }
