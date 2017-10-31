@@ -83,18 +83,25 @@ impl Processor {
                 if db_info.mbid == None {
                   info!("path: {}", path);
 
-                  if let Ok(mbid) = fetch_fingerprint_result(&acoustid, &path) {
-                    conn.update_file_uuid(&path, &mbid);
+                  let last_check = conn.get_acoustid_last_check(db_info.id);
+
+                  // 2 weeks = 1,209,600 seconds = 1,209,600,000 ms
+                  if last_check > 1_209_600_000 {
+                    if let Ok(mbid) = fetch_fingerprint_result(&acoustid, &path) {
+                      conn.update_file_uuid(&path, &mbid);
+                    }
                   }
                 }
               } else {
                 info!("path: {}", path);
 
                 conn.insert_file(&info);
+                let id = conn.get_id(&info);
 
                 if let Ok(mbid) = fetch_fingerprint_result(&acoustid, &path) {
                   conn.update_file_uuid(&path, &mbid);
                 }
+                conn.add_acoustid_last_check(id);
               }
             }
           } else {

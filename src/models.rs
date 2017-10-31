@@ -3,6 +3,9 @@ use uuid::Uuid;
 
 #[derive(Clone, Debug)]
 pub struct MediaFileInfo {
+  // This is the id from the database
+  pub id: i32,
+
   pub path: String,
 
   pub title: Option<String>,
@@ -17,6 +20,7 @@ pub struct MediaFileInfo {
 
 impl MediaFileInfo {
   pub fn from_db(
+    id: i32,
     path: String,
     title: Option<String>,
     artist: Option<String>,
@@ -27,6 +31,7 @@ impl MediaFileInfo {
     mbid: Option<Uuid>
   ) -> Self {
     Self {
+      id: id,
       path: path,
       title: title,
       artist: artist,
@@ -76,6 +81,8 @@ impl MediaFileInfo {
 
     // Store the most relevant details in a struct for easy access
     let file_info = MediaFileInfo {
+      id:           -1,
+
       path:         path.to_owned(),
 
       title:        media_info.get_title().ok(),
