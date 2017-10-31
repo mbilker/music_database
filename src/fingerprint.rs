@@ -4,8 +4,6 @@ use ffmpeg::frame::Audio;
 use ffmpeg::media::Type;
 use ffmpeg::software;
 
-use std;
-
 use basic_types::*;
 
 // Maximum duration global from Chromaprint's fpcalc utility
@@ -109,11 +107,15 @@ pub fn get(path: &str) -> Result<(f64, String), ProcessorError> {
     }
 
     if frame_size > 0 {
+      // Feed chromaprint with the audio data
+      //
+      // There is only one plane because the audio data is now interleaved by
+      // the resampler
       let data_size = (frame_size * channels as u32) as usize;
-      let data = unsafe { std::slice::from_raw_parts(processed.data(0).as_ptr() as *const u8, data_size) };
-      let feed_res = chroma.feed(data);
-      if !feed_res {
-        return Err(ProcessorError::ChromaprintError("chromaprint feed returned false".to_owned()));
+      let data = processed.data(0);
+      trace!("data_size: {}, data.len(): {}", data_size, data.len());
+      if !chroma.feed(&data[0..data_size]) {
+        return Err(ProcessorError::ChromaprintError("feed returned false".to_owned()));
       }
     }
 
@@ -132,5 +134,14 @@ pub fn get(path: &str) -> Result<(f64, String), ProcessorError> {
     Ok((duration, fingerprint))
   } else {
     Err(ProcessorError::ChromaprintError("no fingerprint generated".to_owned()))
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  #[test]
+  fn test_get() {
+    // TODO(mbilker): compose a few example known good fingerprints and
+    // assert_eq! them to values from calling get
   }
 }
