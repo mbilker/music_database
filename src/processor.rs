@@ -81,7 +81,7 @@ impl Processor {
               if let Some(db_info) = conn.fetch_file(&path) {
                 // TODO(mbilker): handle cases where the uuid is missing
                 if db_info.mbid == None {
-                  info!("path: {}", path);
+                  debug!("path does not have associated mbid: {}", path);
 
                   let last_check = conn.get_acoustid_last_check(db_info.id);
 
@@ -90,6 +90,8 @@ impl Processor {
 
                   // 2 weeks = 1,209,600 seconds
                   if difference > 1_209_600 {
+                    info!("path: {}", path);
+
                     debug!("updating mbid (now: {} - last_check: {:?} = {})", now, last_check, difference);
                     if let Ok(mbid) = fetch_fingerprint_result(&acoustid, &path) {
                       conn.update_file_uuid(&path, &mbid);
