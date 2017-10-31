@@ -8,6 +8,7 @@ use models::MediaFileInfo;
 
 static FETCH_BY_PATH_QUERY: &'static str = r#"
   SELECT
+    id,
     title,
     artist,
     album,
@@ -18,6 +19,20 @@ static FETCH_BY_PATH_QUERY: &'static str = r#"
     mbid
   FROM library
   WHERE path = $1
+"#;
+
+static FETCH_ID_QUERY: &'static str = r#"
+  SELECT
+    id
+  FROM library
+  WHERE path = $1
+"#;
+
+static FETCH_LAST_CHECK_QUERY: &'static str = r#"
+  SELECT
+    last_check
+  FROM acoustid_last_check
+  WHERE id = $1
 "#;
 
 static INSERT_QUERY: &'static str = r#"
@@ -43,6 +58,13 @@ static UPDATE_UUID_QUERY: &'static str = r#"
   UPDATE library
   SET mbid = $2
   WHERE path = $1
+"#;
+
+static INSERT_LAST_CHECK_QUERY: &'static str = r#"
+  INSERT INTO acoustid_last_check (
+    library_id,
+    last_check
+  ) VALUES ($1, $2)
 "#;
 
 #[derive(Debug)]
@@ -76,27 +98,56 @@ impl DatabaseConnection {
 
         let row = rows.get(0);
 
-        let title = row.get(0);
-        let artist = row.get(1);
-        let album = row.get(2);
-        let track = row.get(3);
-        let track_number = row.get(4);
-        let duration = row.get(5);
-        let db_path: String = row.get(6);
-        let mbid = row.get(7);
+        let id = row.get(0);
+        let title = row.get(1);
+        let artist = row.get(2);
+        let album = row.get(3);
+        let track = row.get(4);
+        let track_number = row.get(5);
+        let duration = row.get(6);
+        let db_path: String = row.get(7);
+        let mbid = row.get(8);
 
         if !str::eq(path, &db_path) {
           warn!("Path from database is not the same as argument, path: {}", path);
         }
 
         let path = path.clone();
-        let info = MediaFileInfo::from_db(path, title, artist, album, track, track_number, duration, mbid);
+        let info = MediaFileInfo::from_db(id, path, title, artist, album, track, track_number, duration, mbid);
         Some(info)
       },
       Err(err) => {
         panic!("error retrieving row from database: {:?}", err);
       }
     }
+  }
+
+  pub fn get_id(&self, info: &MediaFileInfo) -> i32 {
+    let rows = match self.connection.query(FETCH_ID_QUERY, &[
+      &info.path
+    ]) {
+      Ok(v) => v,
+      Err(err) => panic!("error retrieving id from database: {:#?}", err),
+    };
+
+    let row = rows.get(0);
+
+    let id = row.get(0);
+    id
+  }
+
+  pub fn get_acoustid_last_check(&self, id: i32) -> i64 {
+    let rows = match self.connection.query(FETCH_LAST_CHECK_QUERY, &[
+      &id
+    ]) {
+      Ok(v) => v,
+      Err(err) => panic!("error retrieving last_check from database: {:#?}", err),
+    };
+
+    let row = rows.get(0);
+
+    let last_check = row.get(0);
+    last_check
   }
 
   pub fn insert_file(&self, info: &MediaFileInfo) {
@@ -155,6 +206,17 @@ impl DatabaseConnection {
 
     if let Err(err) = res {
       panic!("unexpected error with SQL update: {:#?}", err);
+    }
+  }
+
+  pub fn add_acoustid_last_check(&self, library_id: i32) {
+    let res = self.connection.execute(INSERT_LAST_CHECK_QUERY, &[
+      &library_id,
+      &"NOW()".to_string()
+    ]);
+    
+    if let Err(err) = res {
+      panic!("unexpected error with SQL insert: {:#?}", err);
     }
   }
 }
