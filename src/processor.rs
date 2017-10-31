@@ -5,8 +5,8 @@ use uuid::Uuid;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-
 use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use acoustid::AcoustId;
 use config::Config;
@@ -85,11 +85,16 @@ impl Processor {
 
                   let last_check = conn.get_acoustid_last_check(db_info.id);
 
-                  // 2 weeks = 1,209,600 seconds = 1,209,600,000 ms
-                  if last_check > 1_209_600_000 {
+                  let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::new(0, 0)).as_secs();
+                  let difference = now - last_check;
+
+                  // 2 weeks = 1,209,600 seconds
+                  if difference > 1_209_600 {
+                    debug!("updating mbid (now: {} - last_check: {} = {})", now, last_check, difference);
                     if let Ok(mbid) = fetch_fingerprint_result(&acoustid, &path) {
                       conn.update_file_uuid(&path, &mbid);
                     }
+                    conn.add_acoustid_last_check(db_info.id);
                   }
                 }
               } else {
