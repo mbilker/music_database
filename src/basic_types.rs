@@ -37,6 +37,7 @@ pub struct AcoustIdResponse {
 pub enum ProcessorError {
   ApiKeyError(),
   NoFingerprintMatch(),
+  NoAudioStream(),
 
   RequestError(reqwest::Error),
   JsonError(serde_json::Error),
