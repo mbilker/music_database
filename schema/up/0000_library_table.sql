@@ -8,4 +8,4 @@ CREATE TABLE library (
   track_number	OID NOT NULL,
   duration	OID NOT NULL,
   path		VARCHAR UNIQUE
-)
+);
