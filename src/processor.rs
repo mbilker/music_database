@@ -79,7 +79,6 @@ impl Processor {
             if let Some(info) = MediaFileInfo::read_file(&path) {
               // Get the previous value from the database if it exists
               if let Some(db_info) = conn.fetch_file(&path) {
-                // TODO(mbilker): handle cases where the uuid is missing
                 if db_info.mbid == None {
                   debug!("path does not have associated mbid: {}", path);
 
