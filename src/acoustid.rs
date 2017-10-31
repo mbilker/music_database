@@ -21,7 +21,7 @@ impl AcoustId {
   pub fn new(api_key: &String) -> Self {
     let mut limiter = ratelimit::Builder::new()
       .capacity(3)
-      .quantum(1)
+      .quantum(3)
       .interval(Duration::new(1, 0)) // 3 requests every 1 second
       .build();
     let handle = limiter.make_handle();
