@@ -17,7 +17,10 @@ pub fn get(path: &str) -> Result<(f64, String), ProcessorError> {
   let duration;
   let index;
   let mut decoder = {
-    let stream = ictx.streams().best(Type::Audio).expect("could not find best audio stream");
+    let stream = match ictx.streams().best(Type::Audio) {
+      Some(v) => v,
+      None => return Err(ProcessorError::NoAudioStream()),
+    };
 
     duration = stream.duration() as f64 * f64::from(stream.time_base());
     index = stream.index();
