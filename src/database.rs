@@ -28,13 +28,6 @@ static FETCH_ID_QUERY: &'static str = r#"
   WHERE path = $1
 "#;
 
-static FETCH_LAST_CHECK_QUERY: &'static str = r#"
-  SELECT
-    CAST(EXTRACT(EPOCH FROM last_check) AS BIGINT)
-  FROM acoustid_last_check
-  WHERE library_id = $1
-"#;
-
 static INSERT_QUERY: &'static str = r#"
   INSERT INTO library (
     title,
@@ -65,6 +58,19 @@ static INSERT_LAST_CHECK_QUERY: &'static str = r#"
     library_id,
     last_check
   ) VALUES ($1, NOW())
+"#;
+
+static FETCH_LAST_CHECK_QUERY: &'static str = r#"
+  SELECT
+    CAST(EXTRACT(EPOCH FROM last_check) AS BIGINT)
+  FROM acoustid_last_check
+  WHERE library_id = $1
+"#;
+
+static UPDATE_LAST_CHECK_QUERY: &'static str = r#"
+  UPDATE acoustid_last_check
+  SET last_check = $2
+  WHERE library_id = $1
 "#;
 
 #[derive(Debug)]
@@ -136,7 +142,7 @@ impl DatabaseConnection {
     id
   }
 
-  pub fn get_acoustid_last_check(&self, id: i32) -> u64 {
+  pub fn get_acoustid_last_check(&self, id: i32) -> Option<u64> {
     let rows = match self.connection.query(FETCH_LAST_CHECK_QUERY, &[
       &id
     ]) {
@@ -146,13 +152,13 @@ impl DatabaseConnection {
 
     // If the value does not exist in the database, return 0
     if rows.len() == 0 {
-      return 0;
+      return None;
     }
 
     let row = rows.get(0);
 
     let last_check: i64 = row.get(0);
-    last_check as u64
+    Some(last_check as u64)
   }
 
   pub fn insert_file(&self, info: &MediaFileInfo) {
@@ -221,6 +227,16 @@ impl DatabaseConnection {
     
     if let Err(err) = res {
       panic!("unexpected error with last_check insert: {:#?}", err);
+    }
+  }
+
+  pub fn update_acoustid_last_check(&self, library_id: i32) {
+    let res = self.connection.execute(UPDATE_LAST_CHECK_QUERY, &[
+      &library_id
+    ]);
+
+    if let Err(err) = res {
+      panic!("unexpected error with last_check update: {:#?}", err);
     }
   }
 }

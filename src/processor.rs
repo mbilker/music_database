@@ -86,15 +86,19 @@ impl Processor {
                   let last_check = conn.get_acoustid_last_check(db_info.id);
 
                   let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::new(0, 0)).as_secs();
-                  let difference = now - last_check;
+                  let difference = now - last_check.unwrap_or(0);
 
                   // 2 weeks = 1,209,600 seconds
                   if difference > 1_209_600 {
-                    debug!("updating mbid (now: {} - last_check: {} = {})", now, last_check, difference);
+                    debug!("updating mbid (now: {} - last_check: {:?} = {})", now, last_check, difference);
                     if let Ok(mbid) = fetch_fingerprint_result(&acoustid, &path) {
                       conn.update_file_uuid(&path, &mbid);
                     }
-                    conn.add_acoustid_last_check(db_info.id);
+                    if last_check == None {
+                      conn.add_acoustid_last_check(db_info.id);
+                    } else {
+                      conn.update_acoustid_last_check(db_info.id);
+                    }
                   }
                 }
               } else {
