@@ -11,14 +11,14 @@ use basic_types::*;
 
 static LOOKUP_URL: &'static str = "https://api.acoustid.org/v2/lookup";
 
+#[derive(Clone)]
 pub struct AcoustId {
   api_key: String,
-
   ratelimit: ratelimit::Handle,
 }
 
 impl AcoustId {
-  pub fn new(api_key: &String) -> Self {
+  pub fn new(api_key: String) -> Self {
     let mut limiter = ratelimit::Builder::new()
       .capacity(3)
       .quantum(3)
@@ -29,8 +29,7 @@ impl AcoustId {
     thread::spawn(move || limiter.run());
 
     Self {
-      api_key: api_key.clone(),
-
+      api_key: api_key,
       ratelimit: handle,
     }
   }
