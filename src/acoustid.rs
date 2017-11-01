@@ -67,6 +67,7 @@ impl AcoustId {
     );
 
     // TODO(mbilker): find a better way than cloning this on each invocation
+    // this requires `self` to be mutable
     let mut handle = self.ratelimit.clone();
     handle.wait();
 

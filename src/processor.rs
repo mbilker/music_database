@@ -22,14 +22,14 @@ struct ProcessorThread {
 
   is_done_processing: Arc<AtomicBool>,
   work_queue: Arc<MsQueue<String>>,
-  acoustid: Arc<AcoustId>,
+  acoustid: AcoustId,
 }
 
 impl ProcessorThread {
   pub fn new(
     is_done_processing: Arc<AtomicBool>,
     work_queue: Arc<MsQueue<String>>,
-    acoustid: Arc<AcoustId>
+    acoustid: AcoustId
   ) -> Self {
     let conn = DatabaseConnection::new().unwrap();
     info!("Database Connection: {:?}", conn);
@@ -142,7 +142,7 @@ impl Processor {
 
     let is_done_processing = Arc::new(AtomicBool::new(false));
     let work_queue: Arc<MsQueue<String>> = Arc::new(MsQueue::new());
-    let acoustid = Arc::new(AcoustId::new(api_key));
+    let acoustid = AcoustId::new(api_key.clone());
 
     let mut threads = Vec::new();
 
