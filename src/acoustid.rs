@@ -58,7 +58,7 @@ impl AcoustId {
     }
   }
 
-  pub fn lookup(&self, duration: f64, fingerprint: &str) -> Result<Option<AcoustIdResult>, ProcessorError> {
+  pub fn lookup(&mut self, duration: f64, fingerprint: &str) -> Result<Option<AcoustIdResult>, ProcessorError> {
     let url = format!("{base}?format=json&client={apiKey}&duration={duration:.0}&fingerprint={fingerprint}&meta=recordings",
       base=LOOKUP_URL,
       apiKey=self.api_key,
@@ -66,10 +66,7 @@ impl AcoustId {
       fingerprint=fingerprint
     );
 
-    // TODO(mbilker): find a better way than cloning this on each invocation
-    // this requires `self` to be mutable
-    let mut handle = self.ratelimit.clone();
-    handle.wait();
+    self.ratelimit.wait();
 
     let mut resp = try!(reqwest::get(&*url));
 

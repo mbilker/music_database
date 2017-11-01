@@ -43,7 +43,7 @@ impl ProcessorThread {
     }
   }
 
-  fn fetch_fingerprint_result(&self, path: &String) -> Result<Uuid, ProcessorError> {
+  fn fetch_fingerprint_result(&mut self, path: &String) -> Result<Uuid, ProcessorError> {
     // Eat up fingerprinting errors, I mostly see them when a file is not easily
     // parsed like WAV files
     let (duration, fingerprint) = try!(fingerprint::get(&path));
@@ -59,7 +59,7 @@ impl ProcessorThread {
     Err(ProcessorError::NoFingerprintMatch())
   }
 
-  fn process_path(&self, path: &String) {
+  fn process_path(&mut self, path: &String) {
     // A None value indicates a non-valid file instead of an error
     let info = match MediaFileInfo::read_file(&path) {
       Some(v) => v,
@@ -104,7 +104,7 @@ impl ProcessorThread {
     }
   }
 
-  pub fn run(&self) {
+  pub fn run(&mut self) {
     loop {
       let path = self.work_queue.try_pop();
       if let Some(path) = path {
@@ -156,7 +156,7 @@ impl Processor {
       // Construct the thread
       let builder = thread::Builder::new().name(format!("processor {}", i).into());
       let handler = try!(builder.spawn(move || {
-        let processor_thread = ProcessorThread::new(is_done_processing, work_queue, acoustid);
+        let mut processor_thread = ProcessorThread::new(is_done_processing, work_queue, acoustid);
         processor_thread.run();
       }));
 
