@@ -9,3 +9,5 @@ CREATE TABLE library (
   duration	OID NOT NULL,
   path		VARCHAR UNIQUE
 );
+
+CREATE INDEX library_mbid ON library (mbid);
