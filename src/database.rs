@@ -7,73 +7,6 @@ use std::env;
 
 use models::MediaFileInfo;
 
-static FETCH_BY_PATH_QUERY: &'static str = r#"
-  SELECT
-    id,
-    title,
-    artist,
-    album,
-    track,
-    track_number,
-    duration,
-    path,
-    mbid
-  FROM library
-  WHERE path = $1
-"#;
-
-static FETCH_ID_QUERY: &'static str = r#"
-  SELECT
-    id
-  FROM library
-  WHERE path = $1
-"#;
-
-static INSERT_QUERY: &'static str = r#"
-  INSERT INTO library (
-    title,
-    artist,
-    album,
-    track,
-    track_number,
-    duration,
-    path
-  ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-"#;
-
-static CHECK_VALID_UUID_QUERY: &'static str = r#"
-  SELECT
-    COUNT(*)
-  FROM "musicbrainz"."recording"
-  WHERE "recording"."gid" = $1
-"#;
-
-static UPDATE_UUID_QUERY: &'static str = r#"
-  UPDATE library
-  SET mbid = $2
-  WHERE path = $1
-"#;
-
-static INSERT_LAST_CHECK_QUERY: &'static str = r#"
-  INSERT INTO acoustid_last_check (
-    library_id,
-    last_check
-  ) VALUES ($1, $2)
-"#;
-
-static FETCH_LAST_CHECK_QUERY: &'static str = r#"
-  SELECT
-    last_check
-  FROM acoustid_last_check
-  WHERE library_id = $1
-"#;
-
-static UPDATE_LAST_CHECK_QUERY: &'static str = r#"
-  UPDATE acoustid_last_check
-  SET last_check = $2
-  WHERE library_id = $1
-"#;
-
 #[derive(Debug)]
 pub struct DatabaseConnection {
   connection: Connection,
@@ -93,7 +26,25 @@ impl DatabaseConnection {
   }
 
   pub fn fetch_file(&self, path: &String) -> Option<MediaFileInfo> {
-    let res = self.connection.query(FETCH_BY_PATH_QUERY, &[
+    let statement = match self.connection.prepare_cached(r#"
+      SELECT
+        id,
+        title,
+        artist,
+        album,
+        track,
+        track_number,
+        duration,
+        path,
+        mbid
+      FROM library
+      WHERE path = $1
+    "#) {
+      Ok(v) => v,
+      Err(err) => panic!("error preparing fetch_file statement: {:#?}", err),
+    };
+
+    let res = statement.query(&[
       &path
     ]);
 
@@ -124,13 +75,23 @@ impl DatabaseConnection {
         Some(info)
       },
       Err(err) => {
-        panic!("error retrieving row from database: {:?}", err);
+        panic!("error retrieving row from database: {:#?}", err);
       }
     }
   }
 
   pub fn get_id(&self, info: &MediaFileInfo) -> i32 {
-    let rows = match self.connection.query(FETCH_ID_QUERY, &[
+    let statement = match self.connection.prepare_cached(r#"
+      SELECT
+        id
+      FROM library
+      WHERE path = $1
+    "#) {
+      Ok(v) => v,
+      Err(err) => panic!("error preparing get_id statement: {:#?}", err),
+    };
+
+    let rows = match statement.query(&[
       &info.path
     ]) {
       Ok(v) => v,
@@ -143,27 +104,23 @@ impl DatabaseConnection {
     id
   }
 
-  pub fn get_acoustid_last_check(&self, id: i32) -> Option<DateTime<Utc>> {
-    let rows = match self.connection.query(FETCH_LAST_CHECK_QUERY, &[
-      &id
-    ]) {
+  pub fn insert_file(&self, info: &MediaFileInfo) {
+    let statement = match self.connection.prepare_cached(r#"
+      INSERT INTO library (
+        title,
+        artist,
+        album,
+        track,
+        track_number,
+        duration,
+        path
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+    "#) {
       Ok(v) => v,
-      Err(err) => panic!("error retrieving last_check from database: {:#?}", err),
+      Err(err) => panic!("error preparing insert_file statement: {:#?}", err),
     };
 
-    // If the value does not exist in the database, return 0
-    if rows.len() == 0 {
-      return None;
-    }
-
-    let row = rows.get(0);
-
-    let last_check = row.get(0);
-    Some(last_check)
-  }
-
-  pub fn insert_file(&self, info: &MediaFileInfo) {
-    let res = self.connection.execute(INSERT_QUERY, &[
+    let res = statement.execute(&[
       &info.title,
       &info.artist,
       &info.album,
@@ -192,8 +149,47 @@ impl DatabaseConnection {
     }
   }
 
+  pub fn get_acoustid_last_check(&self, id: i32) -> Option<DateTime<Utc>> {
+    let statement = match self.connection.prepare_cached(r#"
+      SELECT
+        last_check
+      FROM acoustid_last_check
+      WHERE library_id = $1
+    "#) {
+      Ok(v) => v,
+      Err(err) => panic!("error preparing get_acoustid_last_check statement: {:#?}", err),
+    };
+
+    let rows = match statement.query(&[
+      &id
+    ]) {
+      Ok(v) => v,
+      Err(err) => panic!("error retrieving last_check from database: {:#?}", err),
+    };
+
+    // If the value does not exist in the database, return 0
+    if rows.len() == 0 {
+      return None;
+    }
+
+    let row = rows.get(0);
+
+    let last_check = row.get(0);
+    Some(last_check)
+  }
+
   pub fn check_valid_recording_uuid(&self, uuid: &Uuid) -> bool {
-    let res = self.connection.query(CHECK_VALID_UUID_QUERY, &[
+    let statement = match self.connection.prepare_cached(r#"
+      SELECT
+        COUNT(*)
+      FROM "musicbrainz"."recording"
+      WHERE "recording"."gid" = $1
+    "#) {
+      Ok(v) => v,
+      Err(err) => panic!("error preparing check_valid_recording_uuid statement: {:#?}", err),
+    };
+
+    let res = statement.query(&[
       &uuid
     ]);
 
@@ -211,7 +207,16 @@ impl DatabaseConnection {
   }
 
   pub fn update_file_uuid(&self, path: &str, uuid: &Uuid) {
-    let res = self.connection.execute(UPDATE_UUID_QUERY, &[
+    let statement = match self.connection.prepare_cached(r#"
+      UPDATE library
+      SET mbid = $2
+      WHERE path = $1
+    "#) {
+      Ok(v) => v,
+      Err(err) => panic!("error preparing update_file_uuid statement: {:#?}", err),
+    };
+
+    let res = statement.execute(&[
       &path,
       &uuid
     ]);
@@ -222,7 +227,17 @@ impl DatabaseConnection {
   }
 
   pub fn add_acoustid_last_check(&self, library_id: i32, current_time: DateTime<Utc>) {
-    let res = self.connection.execute(INSERT_LAST_CHECK_QUERY, &[
+    let statement = match self.connection.prepare_cached(r#"
+      INSERT INTO acoustid_last_check (
+        library_id,
+        last_check
+      ) VALUES ($1, $2)
+    "#) {
+      Ok(v) => v,
+      Err(err) => panic!("error preparing add_acoustid_last_check statement: {:#?}", err),
+    };
+
+    let res = statement.execute(&[
       &library_id,
       &current_time
     ]);
@@ -233,7 +248,16 @@ impl DatabaseConnection {
   }
 
   pub fn update_acoustid_last_check(&self, library_id: i32, current_time: DateTime<Utc>) {
-    let res = self.connection.execute(UPDATE_LAST_CHECK_QUERY, &[
+    let statement = match self.connection.prepare_cached(r#"
+      UPDATE acoustid_last_check
+      SET last_check = $2
+      WHERE library_id = $1
+    "#) {
+      Ok(v) => v,
+      Err(err) => panic!("error preparing update_acoustid_last_check statement: {:#?}", err),
+    };
+
+    let res = statement.execute(&[
       &library_id,
       &current_time
     ]);
