@@ -3,10 +3,11 @@ use num_cpus;
 use crossbeam::sync::MsQueue;
 use uuid::Uuid;
 
+use chrono::prelude::*;
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use acoustid::AcoustId;
 use config::Config;
@@ -73,8 +74,8 @@ impl ProcessorThread {
 
         let last_check = self.conn.get_acoustid_last_check(db_info.id);
 
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::new(0, 0)).as_secs();
-        let difference = now - last_check.unwrap_or(0);
+        let now: DateTime<Utc> = Utc::now();
+        let difference = now.timestamp() - last_check.unwrap_or(Utc.timestamp(0, 0)).timestamp();
 
         // 2 weeks = 1,209,600 seconds
         if difference > 1_209_600 {
@@ -84,10 +85,11 @@ impl ProcessorThread {
           if let Ok(mbid) = self.fetch_fingerprint_result(&path) {
             self.conn.update_file_uuid(&path, &mbid);
           }
+
           if last_check == None {
-            self.conn.add_acoustid_last_check(db_info.id);
+            self.conn.add_acoustid_last_check(db_info.id, now);
           } else {
-            self.conn.update_acoustid_last_check(db_info.id);
+            self.conn.update_acoustid_last_check(db_info.id, now);
           }
         }
       }
@@ -100,7 +102,9 @@ impl ProcessorThread {
       if let Ok(mbid) = self.fetch_fingerprint_result(&path) {
         self.conn.update_file_uuid(&path, &mbid);
       }
-      self.conn.add_acoustid_last_check(id);
+
+      let now: DateTime<Utc> = Utc::now();
+      self.conn.add_acoustid_last_check(id, now);
     }
   }
 

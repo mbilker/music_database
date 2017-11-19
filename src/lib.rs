@@ -1,4 +1,5 @@
 extern crate chromaprint;
+extern crate chrono;
 extern crate crossbeam;
 extern crate dotenv;
 extern crate ffmpeg;

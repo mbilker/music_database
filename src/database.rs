@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use postgres::{Connection, TlsMode};
 use postgres::error::UNIQUE_VIOLATION;
 use uuid::Uuid;
@@ -57,12 +58,12 @@ static INSERT_LAST_CHECK_QUERY: &'static str = r#"
   INSERT INTO acoustid_last_check (
     library_id,
     last_check
-  ) VALUES ($1, NOW())
+  ) VALUES ($1, $2)
 "#;
 
 static FETCH_LAST_CHECK_QUERY: &'static str = r#"
   SELECT
-    CAST(EXTRACT(EPOCH FROM last_check) AS BIGINT)
+    last_check
   FROM acoustid_last_check
   WHERE library_id = $1
 "#;
@@ -142,7 +143,7 @@ impl DatabaseConnection {
     id
   }
 
-  pub fn get_acoustid_last_check(&self, id: i32) -> Option<u64> {
+  pub fn get_acoustid_last_check(&self, id: i32) -> Option<DateTime<Utc>> {
     let rows = match self.connection.query(FETCH_LAST_CHECK_QUERY, &[
       &id
     ]) {
@@ -157,8 +158,8 @@ impl DatabaseConnection {
 
     let row = rows.get(0);
 
-    let last_check: i64 = row.get(0);
-    Some(last_check as u64)
+    let last_check = row.get(0);
+    Some(last_check)
   }
 
   pub fn insert_file(&self, info: &MediaFileInfo) {
@@ -220,9 +221,10 @@ impl DatabaseConnection {
     }
   }
 
-  pub fn add_acoustid_last_check(&self, library_id: i32) {
+  pub fn add_acoustid_last_check(&self, library_id: i32, current_time: DateTime<Utc>) {
     let res = self.connection.execute(INSERT_LAST_CHECK_QUERY, &[
-      &library_id
+      &library_id,
+      &current_time
     ]);
     
     if let Err(err) = res {
@@ -230,9 +232,10 @@ impl DatabaseConnection {
     }
   }
 
-  pub fn update_acoustid_last_check(&self, library_id: i32) {
+  pub fn update_acoustid_last_check(&self, library_id: i32, current_time: DateTime<Utc>) {
     let res = self.connection.execute(UPDATE_LAST_CHECK_QUERY, &[
-      &library_id
+      &library_id,
+      &current_time
     ]);
 
     if let Err(err) = res {
