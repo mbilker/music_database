@@ -18,6 +18,22 @@ pub struct MediaFileInfo {
   pub mbid: Option<Uuid>,
 }
 
+#[derive(Debug, ElasticType, Serialize)]
+pub struct MediaFileInfoDocument {
+  pub id: i32,
+
+  pub path: String,
+
+  pub title: Option<String>,
+  pub artist: Option<String>,
+  pub album: Option<String>,
+  pub track: Option<String>,
+  pub track_number: i32,
+  pub duration: i32,
+
+  pub mbid: Option<String>,
+}
+
 impl MediaFileInfo {
   pub fn from_db(
     id: i32,
@@ -110,7 +126,21 @@ impl MediaFileInfo {
     self.artist == None &&
     self.album  == None &&
     self.track  == None &&
-    self.duration == 0 &&
-    self.track_number == 0
+    self.track_number == 0 &&
+    self.duration == 0
+  }
+
+  pub fn to_document(&self) -> MediaFileInfoDocument {
+    MediaFileInfoDocument {
+      id:		self.id.clone(),
+      path:		self.path.clone(),
+      title:		self.title.clone(),
+      artist:		self.artist.clone(),
+      album:		self.album.clone(),
+      track:		self.track.clone(),
+      track_number:	self.track_number as i32,
+      duration:		self.duration as i32,
+      mbid:		self.mbid.map(|x| x.to_string())
+    }
   }
 }

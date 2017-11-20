@@ -1,6 +1,8 @@
 use num_cpus;
 
 use crossbeam::sync::MsQueue;
+use futures_cpupool::Builder as CpuPoolBuilder;
+use tokio_core::reactor::Core;
 use uuid::Uuid;
 
 use chrono::prelude::*;
@@ -12,6 +14,7 @@ use std::thread;
 use acoustid::AcoustId;
 use config::Config;
 use database::DatabaseConnection;
+use elasticsearch::ElasticSearch;
 use file_scanner;
 use fingerprint;
 use models::MediaFileInfo;
@@ -21,9 +24,10 @@ use basic_types::*;
 struct ProcessorThread {
   conn: DatabaseConnection,
 
+  acoustid: AcoustId,
+
   is_done_processing: Arc<AtomicBool>,
   work_queue: Arc<MsQueue<String>>,
-  acoustid: AcoustId,
 }
 
 impl ProcessorThread {
@@ -38,9 +42,10 @@ impl ProcessorThread {
     Self {
       conn: conn,
 
+      acoustid: acoustid,
+
       is_done_processing: is_done_processing,
       work_queue: work_queue,
-      acoustid: acoustid,
     }
   }
 
@@ -143,6 +148,17 @@ impl Processor {
     };
 
     let cores = num_cpus::get();
+
+    let mut core = Core::new().unwrap();
+    let pool = CpuPoolBuilder::new()
+      .pool_size(cores)
+      .name_prefix("pool_thread")
+      .create();
+
+    let search = ElasticSearch::new(pool, core.handle());
+    let index_exists_future = search.ensure_index_exists();
+
+    core.run(index_exists_future).unwrap();
 
     let is_done_processing = Arc::new(AtomicBool::new(false));
     let work_queue: Arc<MsQueue<String>> = Arc::new(MsQueue::new());
