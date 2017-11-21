@@ -11,6 +11,8 @@ extern crate futures_cpupool;
 extern crate mediainfo;
 extern crate num_cpus;
 extern crate postgres;
+extern crate r2d2;
+extern crate r2d2_postgres;
 extern crate ratelimit;
 extern crate reqwest;
 extern crate serde;
