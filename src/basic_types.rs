@@ -35,6 +35,8 @@ pub struct AcoustIdResponse {
 
 #[derive(Debug)]
 pub enum ProcessorError {
+  NothingUseful(),
+
   ApiKeyError(),
   NoFingerprintMatch(),
   NoAudioStream(),
