@@ -41,7 +41,7 @@ fn print_fingerprint(api_key: &String, lookup: bool, path: &str) {
   println!("{}", fingerprint);
 
   if lookup {
-    let mut acoustid = AcoustId::new(api_key.clone());
+    let acoustid = AcoustId::new(api_key.clone());
     match acoustid.lookup(duration, &fingerprint) {
       Ok(res) => {
         println!("Result: {:#?}", res);
