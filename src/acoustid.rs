@@ -1,20 +1,24 @@
-use ratelimit;
-use reqwest;
-use serde_json;
-
+use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::io::Read;
 use std::thread;
 use std::time::Duration;
 
+use ratelimit;
+use reqwest;
+use serde_json;
+
+use uuid::Uuid;
+
+use fingerprint;
+
 use basic_types::*;
 
 static LOOKUP_URL: &'static str = "https://api.acoustid.org/v2/lookup";
 
-#[derive(Clone)]
 pub struct AcoustId {
   api_key: String,
-  ratelimit: ratelimit::Handle,
+  ratelimit: RefCell<ratelimit::Handle>,
 }
 
 impl AcoustId {
@@ -30,7 +34,7 @@ impl AcoustId {
 
     Self {
       api_key: api_key,
-      ratelimit: handle,
+      ratelimit: RefCell::new(handle),
     }
   }
 
@@ -58,7 +62,7 @@ impl AcoustId {
     }
   }
 
-  pub fn lookup(&mut self, duration: f64, fingerprint: &str) -> Result<Option<AcoustIdResult>, ProcessorError> {
+  pub fn lookup(&self, duration: f64, fingerprint: &str) -> Result<Option<AcoustIdResult>, ProcessorError> {
     let url = format!("{base}?format=json&client={apiKey}&duration={duration:.0}&fingerprint={fingerprint}&meta=recordings",
       base=LOOKUP_URL,
       apiKey=self.api_key,
@@ -66,15 +70,33 @@ impl AcoustId {
       fingerprint=fingerprint
     );
 
-    self.ratelimit.wait();
+    let mut resp = {
+      self.ratelimit.borrow_mut().wait();
 
-    let mut resp = try!(reqwest::get(&*url));
+      try!(reqwest::get(&*url))
+    };
 
     let mut content = String::new();
     try!(resp.read_to_string(&mut content));
     debug!("response: {}", content);
 
     self.handle_response(content)
+  }
+
+  pub fn parse_file(&self, path: &str) -> Result<Uuid, ProcessorError> {
+    // Eat up fingerprinting errors, I mostly see them when a file is not easily
+    // parsed like WAV files
+    let (duration, fingerprint) = try!(fingerprint::get(&path));
+
+    let result = try!(self.lookup(duration, &fingerprint));
+    if let Some(result) = result {
+     if let Some(recordings) = result.recordings {
+        let first = recordings.first().unwrap();
+        return Ok(first.id.clone());
+      }
+    }
+
+    Err(ProcessorError::NoFingerprintMatch())
   }
 }
 
