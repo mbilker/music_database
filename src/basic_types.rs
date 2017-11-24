@@ -1,6 +1,6 @@
 use ffmpeg;
 use reqwest;
-use serde_json;
+use serde_json::Error as SerdeJsonError;
 
 use uuid::Uuid;
 
@@ -35,14 +35,14 @@ pub struct AcoustIdResponse {
 
 #[derive(Debug)]
 pub enum ProcessorError {
-  NothingUseful(),
+  NothingUseful,
 
-  ApiKeyError(),
-  NoFingerprintMatch(),
-  NoAudioStream(),
+  ApiKeyError,
+  NoFingerprintMatch,
+  NoAudioStream,
 
   RequestError(reqwest::Error),
-  JsonError(serde_json::Error),
+  JsonError(SerdeJsonError),
   IoError(io::Error),
   ThreadError(String),
   MutexError(String),
@@ -57,8 +57,8 @@ impl From<reqwest::Error> for ProcessorError {
   }
 }
 
-impl From<serde_json::Error> for ProcessorError {
-  fn from(value: serde_json::Error) -> ProcessorError {
+impl From<SerdeJsonError> for ProcessorError {
+  fn from(value: SerdeJsonError) -> ProcessorError {
     ProcessorError::JsonError(value)
   }
 }

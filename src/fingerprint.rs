@@ -19,7 +19,7 @@ pub fn get(path: &str) -> Result<(f64, String), ProcessorError> {
   let mut decoder = {
     let stream = match ictx.streams().best(Type::Audio) {
       Some(v) => v,
-      None => return Err(ProcessorError::NoAudioStream()),
+      None => return Err(ProcessorError::NoAudioStream),
     };
 
     duration = stream.duration() as f64 * f64::from(stream.time_base());

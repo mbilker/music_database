@@ -1,7 +1,7 @@
-use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::io::Read;
 use std::thread;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use ratelimit;
@@ -18,7 +18,7 @@ static LOOKUP_URL: &'static str = "https://api.acoustid.org/v2/lookup";
 
 pub struct AcoustId {
   api_key: String,
-  ratelimit: RefCell<ratelimit::Handle>,
+  ratelimit: Arc<Mutex<ratelimit::Handle>>,
 }
 
 impl AcoustId {
@@ -34,7 +34,7 @@ impl AcoustId {
 
     Self {
       api_key: api_key,
-      ratelimit: RefCell::new(handle),
+      ratelimit: Arc::new(Mutex::new(handle)),
     }
   }
 
@@ -71,7 +71,7 @@ impl AcoustId {
     );
 
     let mut resp = {
-      self.ratelimit.borrow_mut().wait();
+      self.ratelimit.lock().unwrap().wait();
 
       try!(reqwest::get(&*url))
     };
@@ -96,7 +96,7 @@ impl AcoustId {
       }
     }
 
-    Err(ProcessorError::NoFingerprintMatch())
+    Err(ProcessorError::NoFingerprintMatch)
   }
 }
 
