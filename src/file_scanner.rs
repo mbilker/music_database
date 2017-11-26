@@ -1,4 +1,4 @@
-use walkdir::{DirEntry, WalkDir, WalkDirIterator};
+use walkdir::{DirEntry, WalkDir};
 
 fn is_hidden(entry: &DirEntry) -> bool {
   entry.file_name()
