@@ -3,9 +3,10 @@ use std::sync::Arc;
 
 use num_cpus;
 
-use futures::Future;
+use futures::{Future, Stream};
 use futures::future;
-use futures_cpupool::Builder as CpuPoolBuilder;
+use futures::stream;
+use futures_cpupool::{Builder as CpuPoolBuilder, CpuPool};
 use tokio_core::reactor::Core;
 
 use chrono::prelude::*;
@@ -26,12 +27,15 @@ struct WorkUnit {
 }
 
 struct ProcessorThread {
-  acoustid: Arc<AcoustId>,
-  conn: Arc<DatabaseConnection>,
 }
 
-pub struct Processor {
-  config: Config,
+pub struct Processor<'a> {
+  paths: &'a Vec<String>,
+
+  thread_pool: CpuPool,
+
+  acoustid: Arc<AcoustId>,
+  conn: Arc<DatabaseConnection>,
 }
 
 impl ProcessorThread {
@@ -113,19 +117,12 @@ impl ProcessorThread {
     Box::new(future)
   }
 
-  fn call(&self, req: MediaFileInfo) -> Box<Future<Item = (), Error = ProcessorError> + Send> {
-    let work = WorkUnit {
-      conn:	self.conn.clone(),
-      acoustid:	self.acoustid.clone(),
-      info:	Arc::new(req),
-    };
-
+  fn call(work: WorkUnit) -> Box<Future<Item = (), Error = ProcessorError> + Send> {
     // Get the previous value from the database if it exists
     let fetch_future = work.conn.fetch_file(work.info.path.clone());
 
     let future = fetch_future.map_err(|e| {
-      error!("process_path err: {:#?}", e);
-      ProcessorError::NothingUseful
+      ProcessorError::from(e)
     }).and_then(move |db_info| {
       match db_info {
         Some(v) => Self::update_path_entry(work, v),
@@ -137,73 +134,139 @@ impl ProcessorThread {
   }
 }
 
-impl Processor {
-  pub fn new(config: Config) -> Self {
-    Self {
-      config: config,
-    }
-  }
-
-  pub fn scan_dirs(&self) -> Result<Box<i32>, ProcessorError> {
-    let api_key = match self.config.api_keys.get("acoustid") {
+impl<'a> Processor<'a> {
+  pub fn new(config: &'a Config) -> Result<Self, ProcessorError> {
+    let api_key = match config.api_keys.get("acoustid") {
       Some(v) => v,
       None => return Err(ProcessorError::ApiKeyError),
     };
 
     let cores = num_cpus::get();
 
-    let mut core = Core::new().unwrap();
     let thread_pool = CpuPoolBuilder::new()
       .pool_size(cores)
       .name_prefix("pool_thread")
       .create();
 
+    let acoustid = Arc::new(AcoustId::new(api_key.clone()));
+
     let conn = Arc::new(DatabaseConnection::new(thread_pool.clone()));
     info!("Database Future: {:?}", conn);
 
-    let search = ElasticSearch::new(thread_pool.clone(), core.handle());
+    Ok(Self {
+      paths: &config.paths,
+
+      thread_pool,
+
+      acoustid,
+      conn,
+    })
+  }
+
+  pub fn scan_dirs(&self) -> Result<Box<i32>, ProcessorError> {
+    let mut core = Core::new().unwrap();
+
+    let search = ElasticSearch::new(self.thread_pool.clone(), core.handle());
     let index_exists_future = search.ensure_index_exists();
     core.run(index_exists_future).unwrap();
 
-    let acoustid = Arc::new(AcoustId::new(api_key.clone()));
+    let test = stream::iter_ok(vec!["test1", "foo", "bar", "foobar"]).and_then(|item| {
+      if false {
+        return Err(());
+      }
 
-    let paths = &self.config.paths;
-    for path in paths {
+      info!("stream test, item: {:?}", item);
+      Ok(())
+    }).for_each(|_| {
+      Ok(())
+    });
+    core.run(test).unwrap();
+
+    for path in self.paths {
       println!("Scanning {}", path);
 
       let dir_walk = file_scanner::scan_dir(&path);
-      let files = dir_walk.iter();
+      let files: Vec<String> = dir_walk.iter().map(|e| e.clone()).collect();
 
-      let futures = files.map(|file| {
+      debug!("files length: {}", files.len());
+
+      let thread_pool = self.thread_pool.clone();
+      //let handle = core.handle();
+
+      let acoustid = self.acoustid.clone();
+      let conn = self.conn.clone();
+
+      let handler = stream::iter_ok(files).and_then(|file| {
         let file = file.clone();
-	let conn = conn.clone();
-	let acoustid = acoustid.clone();
-
-        let processing = ProcessorThread {
-          conn,
-          acoustid,
-        };
 
         thread_pool.spawn_fn(move || {
+        //let future = future::lazy(move || {
           // A None value indicates a non-valid file instead of an error
-          match MediaFileInfo::read_file(&file) {
-            Some(v) => Ok(v),
-            None => Err(ProcessorError::NothingUseful),
-          }
-        }).and_then(move |info| {
-          processing.call(info)
+          Ok(MediaFileInfo::read_file(&file))
         })
+      }).filter_map(|info| {
+        info
+      }).and_then(move |info| {
+        let acoustid = acoustid.clone();
+        let conn = conn.clone();
+
+        let work = WorkUnit {
+          acoustid,
+          conn,
+
+          info: Arc::new(info),
+        };
+
+        ProcessorThread::call(work)
+      }).for_each(|_| {
+        Ok(())
+      }).map_err(|e| {
+        error!("err: {:#?}", e);
       });
+/*
+        // Screw the type checker sometimes
+        // Tricks Rust into thinking the Error type is ()
+        if false {
+          return Err(());
+        }
 
-      for future in futures {
-        let res = future.wait();
-        match res {
-          Ok(v) => debug!("future: {:?}", v),
+        Ok(())
+      });
+*/
+      //let future: Box<Future<Item = (), Error = ()>> = Box::new(handler);
+ 
+      println!("did we get here?");
 
-          Err(ProcessorError::NothingUseful) => (),
-          Err(err) => error!("future error: {:?}", err),
+      core.run(handler).unwrap();
+      //core.run(future).unwrap();
+/*
+      let mut all_futures: Vec<_> = futures.collect();
+
+      let mut did_process_event = false;
+      while !did_process_event {
+        did_process_event = false;
+
+        let mut i = 0;
+        while i != all_futures.len() {
+          trace!("all_futures[{}]", i);
+          match all_futures[i].poll() {
+            Ok(Async::Ready(res)) => {
+              did_process_event = true;
+
+              println!("[{}] future: {:?}", i, res);
+
+              all_futures.remove(i);
+              i -= 1;
+            },
+            Ok(Async::NotReady) => (),
+
+            Err(ProcessorError::NothingUseful) => (),
+            Err(err) => error!("future error: {:?}", err),
+          }
+          i += 1;
         }
       }
+*/
     }
 
     Ok(Box::new(9000))

@@ -93,7 +93,7 @@ fn main() {
   info!("Config: {:?}", config);
 
   if let Some(_matches) = matches.subcommand_matches("scan") {
-    let processor = Processor::new(config);
+    let processor = Processor::new(&config).unwrap();
 
     let res = processor.scan_dirs();
     if let Err(err) = res {
