@@ -85,12 +85,17 @@ impl MediaFileInfo {
       return None;
     }
 
-    // Filter out m3u8 files, they have a duration according to mediainfo, but
-    // I do not want m3u8 files in the database
+    // Filter out m3u8 and mpls files, they have a duration according to
+    // mediainfo, but I do not want playlist files in the database
     let extension = media_info.get_with_default_options("Format/Extensions");
     if let Ok(extension) = extension {
-      if extension == "m3u8" {
-        trace!(target: path, "m3u8 playlist");
+      let ignore = match extension.as_ref() {
+        "m3u8" => true,
+        "mpls" => true,
+        _ => false,
+      };
+      if ignore {
+        trace!(target: path, "ignore {} playlist", extension);
         return None;
       }
     }
