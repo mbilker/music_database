@@ -76,7 +76,7 @@ impl ElasticSearch {
         // Only create the index on 404 and print out details for non-200
         // response codes
         match exists.status() {
-          200 => Box::new(future::ok::<(), ()>(())),
+          200 => Box::new(future::ok(())),
           404 => Box::new(create_index(client)),
             _ => Box::new(handle_other_response(exists)),
         }
