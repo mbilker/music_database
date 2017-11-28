@@ -19,6 +19,12 @@ use models::MediaFileInfo;
 
 use basic_types::*;
 
+macro_rules! wrap_err {
+  ($x:expr) => {
+    $x.map_err(|e| ProcessorError::from(e))
+  }
+}
+
 struct WorkUnit {
   acoustid: Arc<AcoustId>,
   conn: Arc<DatabaseConnection>,
@@ -38,7 +44,7 @@ pub struct Processor<'a> {
 }
 
 impl ProcessorThread {
-  fn insert_path_entry(work: WorkUnit) -> Box<Future<Item = (), Error = ProcessorError> + Send> {
+  fn insert_path_entry(work: WorkUnit) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError> + Send> {
     info!("path: {}", work.info.path);
 
     let conn1 = work.conn.clone();
@@ -47,30 +53,35 @@ impl ProcessorThread {
 
     let info = work.info.clone();
 
-    let add_future = work.conn.insert_file(&work.info.clone())
-      .map_err(|e| ProcessorError::from(e));
+    let add_future = wrap_err!(work.conn.insert_file(&work.info.clone()));
 
     let future = add_future.and_then(move |_| {
       let acoustid_future = acoustid.parse_file(info.path.clone());
-      let id_future = conn1.get_id(&info).map_err(|e| ProcessorError::from(e));
+      let info_future = wrap_err!(conn1.fetch_file(info.path.clone())).and_then(|info| {
+        // If a database row is not returned after adding it, there is an issue and the
+        // error is appropriate here
+        match info {
+          Some(v) => Ok(v),
+             None => Err(ProcessorError::NothingUseful),
+        }
+      });
 
-      acoustid_future.join(id_future)
-    }).and_then(move |(mbid, id)| {
-      let last_check = conn2.add_acoustid_last_check(id, Utc::now());
-      let uuid = conn2.update_file_uuid(id, mbid);
+      acoustid_future.join(info_future)
+    }).and_then(move |(mbid, info)| {
+      let last_check = conn2.add_acoustid_last_check(info.id, Utc::now());
+      let uuid = conn2.update_file_uuid(info.id, mbid);
 
-      last_check
-        .join(uuid)
-        .map_err(|e| ProcessorError::from(e))
-	.and_then(|(_, _)| Ok(()))
+      wrap_err!(last_check
+        .join(uuid))
+	.and_then(|(_, _)| Ok(info))
     });
 
     Box::new(future)
   }
 
-  fn update_path_entry(work: WorkUnit, db_info: MediaFileInfo) -> Box<Future<Item = (), Error = ProcessorError> + Send> {
+  fn update_path_entry(work: WorkUnit, db_info: MediaFileInfo) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError> + Send> {
     if work.info.mbid != None {
-      return Box::new(future::ok(()));
+      return Box::new(future::ok(db_info));
     }
 
     debug!("path does not have associated mbid: {}", work.info.path);
@@ -78,18 +89,17 @@ impl ProcessorThread {
     let acoustid = work.acoustid.clone();
     let conn = work.conn.clone();
 
-    let last_check = work.conn.get_acoustid_last_check(db_info.id)
-      .map_err(|e| ProcessorError::from(e));
+    let last_check = wrap_err!(work.conn.get_acoustid_last_check(db_info.id));
 
     // Must use trait object or rust will not detect the correct boxing
-    let future = last_check.and_then(move |last_check| -> Box<Future<Item = (), Error = ProcessorError> + Send> {
+    let future = last_check.and_then(move |last_check| -> Box<Future<Item = MediaFileInfo, Error = ProcessorError> + Send> {
       let now: DateTime<Utc> = Utc::now();
       let difference = now.timestamp() - last_check.unwrap_or(Utc.timestamp(0, 0)).timestamp();
 
       // 2 weeks = 1,209,600 seconds
       if difference < 1_209_600 {
         debug!("id: {}, last check within 2 weeks, not re-checking", db_info.id);
-        return Box::new(future::ok(()));
+        return Box::new(future::ok(db_info));
       }
 
       let id = db_info.id;
@@ -99,8 +109,7 @@ impl ProcessorThread {
       let conn2 = conn.clone();
       let fetch_fingerprint = acoustid.parse_file(db_info.path.clone())
         .and_then(move |mbid|
-          conn2.update_file_uuid(id, mbid)
-            .map_err(|e| ProcessorError::from(e))
+          wrap_err!(conn2.update_file_uuid(id, mbid))
         );
 
       let last_check = match last_check {
@@ -112,7 +121,7 @@ impl ProcessorThread {
         .map_err(|e| ProcessorError::from(e))
         .join(fetch_fingerprint)
         .inspect(|&(arg1, _)| debug!("last_check add/update: {:?}", arg1))
-        .and_then(|(_, _)| Ok(()));
+        .and_then(|(_, _)| Ok(db_info));
 
       Box::new(future)
     });
@@ -120,13 +129,11 @@ impl ProcessorThread {
     Box::new(future)
   }
 
-  fn call(work: WorkUnit) -> Box<Future<Item = (), Error = ProcessorError> + Send> {
+  fn call(work: WorkUnit) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError> + Send> {
     // Get the previous value from the database if it exists
-    let fetch_future = work.conn.fetch_file(work.info.path.clone());
+    let fetch_future = wrap_err!(work.conn.fetch_file(work.info.path.clone()));
 
-    let future = fetch_future.map_err(|e| {
-      ProcessorError::from(e)
-    }).and_then(move |db_info| {
+    let future = fetch_future.and_then(move |db_info| {
       match db_info {
         Some(v) => Self::update_path_entry(work, v),
            None => Self::insert_path_entry(work),
@@ -169,7 +176,7 @@ impl<'a> Processor<'a> {
   pub fn scan_dirs(&self) -> Result<Box<i32>, ProcessorError> {
     let mut core = Core::new().unwrap();
 
-    let search = ElasticSearch::new(self.thread_pool.clone(), core.handle());
+    let search = Arc::new(ElasticSearch::new(self.thread_pool.clone(), core.handle()));
     let index_exists_future = search.ensure_index_exists();
     core.run(index_exists_future).unwrap();
 
@@ -194,16 +201,15 @@ impl<'a> Processor<'a> {
       debug!("files length: {}", files.len());
 
       let thread_pool = self.thread_pool.clone();
-      //let handle = core.handle();
 
       let acoustid = self.acoustid.clone();
       let conn = self.conn.clone();
+      let search = search.clone();
 
       let handler = stream::iter_ok(files).and_then(|file| {
         let file = file.clone();
 
         thread_pool.spawn_fn(move || {
-        //let future = future::lazy(move || {
           // A None value indicates a non-valid file instead of an error
           Ok(MediaFileInfo::read_file(&file))
         })
@@ -221,7 +227,8 @@ impl<'a> Processor<'a> {
         };
 
         ProcessorThread::call(work)
-      }).for_each(|_| {
+      }).for_each(|info| {
+        info!("info: {:?}", info);
         Ok(())
       }).map_err(|e| {
         error!("err: {:#?}", e);
