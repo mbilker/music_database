@@ -2,11 +2,15 @@ extern crate clap;
 extern crate dotenv;
 extern crate ffmpeg;
 extern crate pretty_env_logger;
+extern crate ratelimit;
 
 #[macro_use]
 extern crate log;
 
 extern crate music_card_catalog;
+
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 use clap::{App, Arg, SubCommand};
 use dotenv::dotenv;
@@ -41,8 +45,12 @@ fn print_fingerprint(api_key: &String, lookup: bool, path: &str) {
   println!("{}", fingerprint);
 
   if lookup {
-    let acoustid = AcoustId::new(api_key.clone());
-    match acoustid.lookup(duration, &fingerprint) {
+    let mut limiter = ratelimit::Builder::new().frequency(1).build();
+    let handle = Arc::new(Mutex::new(limiter.make_handle()));
+
+    thread::spawn(move || limiter.run());
+
+    match AcoustId::lookup(api_key.clone(), duration, fingerprint, handle) {
       Ok(res) => {
         println!("Result: {:#?}", res);
       },

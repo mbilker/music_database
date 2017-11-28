@@ -4,6 +4,8 @@ use std::thread;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use futures::Future;
+use futures_cpupool::CpuPool;
 use ratelimit;
 use reqwest;
 use serde_json;
@@ -19,10 +21,11 @@ static LOOKUP_URL: &'static str = "https://api.acoustid.org/v2/lookup";
 pub struct AcoustId {
   api_key: String,
   ratelimit: Arc<Mutex<ratelimit::Handle>>,
+  thread_pool: CpuPool,
 }
 
 impl AcoustId {
-  pub fn new(api_key: String) -> Self {
+  pub fn new(api_key: String, thread_pool: CpuPool) -> Self {
     let mut limiter = ratelimit::Builder::new()
       .capacity(3)
       .quantum(3)
@@ -32,13 +35,16 @@ impl AcoustId {
 
     thread::spawn(move || limiter.run());
 
+    let ratelimit = Arc::new(Mutex::new(handle));
+
     Self {
-      api_key: api_key,
-      ratelimit: Arc::new(Mutex::new(handle)),
+      api_key,
+      ratelimit,
+      thread_pool,
     }
   }
 
-  fn handle_response(&self, data: String) -> Result<Option<AcoustIdResult>, ProcessorError> {
+  fn handle_response(data: String) -> Result<Option<AcoustIdResult>, ProcessorError> {
     let v: AcoustIdResponse = try!(serde_json::from_str(&data));
     debug!("v: {:?}", v);
 
@@ -62,16 +68,21 @@ impl AcoustId {
     }
   }
 
-  pub fn lookup(&self, duration: f64, fingerprint: &str) -> Result<Option<AcoustIdResult>, ProcessorError> {
+  pub fn lookup(
+    api_key: String,
+    duration: f64,
+    fingerprint: String,
+    ratelimit: Arc<Mutex<ratelimit::Handle>>
+  ) -> Result<Option<AcoustIdResult>, ProcessorError> {
     let url = format!("{base}?format=json&client={apiKey}&duration={duration:.0}&fingerprint={fingerprint}&meta=recordings",
       base=LOOKUP_URL,
-      apiKey=self.api_key,
+      apiKey=api_key,
       duration=duration,
       fingerprint=fingerprint
     );
 
     let mut resp = {
-      self.ratelimit.lock().unwrap().wait();
+      ratelimit.lock().unwrap().wait();
 
       try!(reqwest::get(&*url))
     };
@@ -80,23 +91,30 @@ impl AcoustId {
     try!(resp.read_to_string(&mut content));
     debug!("response: {}", content);
 
-    self.handle_response(content)
+    Self::handle_response(content)
   }
 
-  pub fn parse_file(&self, path: &str) -> Result<Uuid, ProcessorError> {
-    // Eat up fingerprinting errors, I mostly see them when a file is not easily
-    // parsed like WAV files
-    let (duration, fingerprint) = try!(fingerprint::get(&path));
+  pub fn parse_file(&self, path: String) -> Box<Future<Item = Uuid, Error = ProcessorError> + Send> {
+    let api_key = self.api_key.clone();
+    let ratelimit = self.ratelimit.clone();
 
-    let result = try!(self.lookup(duration, &fingerprint));
-    if let Some(result) = result {
-     if let Some(recordings) = result.recordings {
-        let first = recordings.first().unwrap();
-        return Ok(first.id.clone());
+    let uuid = self.thread_pool.spawn_fn(move || {
+      // Eat up fingerprinting errors, I mostly see them when a file is not easily
+      // parsed like WAV files
+      let (duration, fingerprint) = try!(fingerprint::get(&path));
+
+      let result = try!(Self::lookup(api_key, duration, fingerprint, ratelimit));
+      if let Some(result) = result {
+       if let Some(recordings) = result.recordings {
+          let first = recordings.first().unwrap();
+          return Ok(first.id.clone());
+        }
       }
-    }
 
-    Err(ProcessorError::NoFingerprintMatch)
+      Err(ProcessorError::NoFingerprintMatch)
+    });
+
+    Box::new(uuid)
   }
 }
 

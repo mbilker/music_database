@@ -1,4 +1,3 @@
-use std::io;
 use std::sync::Arc;
 
 use num_cpus;
@@ -46,25 +45,24 @@ impl ProcessorThread {
     let conn2 = work.conn.clone();
     let acoustid = work.acoustid.clone();
 
-    let info1 = work.info.clone();
-    let info2 = work.info.clone();
+    let info = work.info.clone();
 
-    let add_future = work.conn.insert_file(&work.info.clone());
+    let add_future = work.conn.insert_file(&work.info.clone())
+      .map_err(|e| ProcessorError::from(e));
+
     let future = add_future.and_then(move |_| {
-      conn1.get_id(&info1)
-    }).and_then(move |id| {
-      let acoustid_future = conn2.add_acoustid_last_check(id, Utc::now());
+      let acoustid_future = acoustid.parse_file(info.path.clone());
+      let id_future = conn1.get_id(&info).map_err(|e| ProcessorError::from(e));
 
-      let uuid_future = match acoustid.parse_file(&info2.path) {
-	Ok(mbid) => conn2.update_file_uuid(info2.path.clone(), mbid),
-	  Err(_) => Box::new(future::ok(())),
-      };
+      acoustid_future.join(id_future)
+    }).and_then(move |(mbid, id)| {
+      let last_check = conn2.add_acoustid_last_check(id, Utc::now());
+      let uuid = conn2.update_file_uuid(id, mbid);
 
-      acoustid_future.join(uuid_future)
+      last_check
+        .join(uuid)
+        .map_err(|e| ProcessorError::from(e))
 	.and_then(|(_, _)| Ok(()))
-    }).map_err(|e| {
-      error!("add_future.map_err: {:#?}", e);
-      ProcessorError::NothingUseful
     });
 
     Box::new(future)
@@ -80,38 +78,43 @@ impl ProcessorThread {
     let acoustid = work.acoustid.clone();
     let conn = work.conn.clone();
 
-    let last_check = work.conn.get_acoustid_last_check(db_info.id);
+    let last_check = work.conn.get_acoustid_last_check(db_info.id)
+      .map_err(|e| ProcessorError::from(e));
 
     // Must use trait object or rust will not detect the correct boxing
-    let future = last_check.and_then(move |last_check| -> Box<Future<Item = (), Error = io::Error> + Send> {
+    let future = last_check.and_then(move |last_check| -> Box<Future<Item = (), Error = ProcessorError> + Send> {
       let now: DateTime<Utc> = Utc::now();
       let difference = now.timestamp() - last_check.unwrap_or(Utc.timestamp(0, 0)).timestamp();
 
       // 2 weeks = 1,209,600 seconds
-      if difference <= 1_209_600 {
+      if difference < 1_209_600 {
+        debug!("id: {}, last check within 2 weeks, not re-checking", db_info.id);
         return Box::new(future::ok(()));
       }
 
-      info!("path: {}", db_info.path);
+      let id = db_info.id;
+      info!("id: {}, path: {}", id, db_info.path);
 
       debug!("updating mbid (now: {} - last_check: {:?} = {})", now, last_check, difference);
-      let fetch_fingerprint = match acoustid.parse_file(&db_info.path) {
-        Ok(mbid) => conn.update_file_uuid(db_info.path, mbid),
-        Err(_) => Box::new(future::ok(())),
-      };
+      let conn2 = conn.clone();
+      let fetch_fingerprint = acoustid.parse_file(db_info.path.clone())
+        .and_then(move |mbid|
+          conn2.update_file_uuid(id, mbid)
+            .map_err(|e| ProcessorError::from(e))
+        );
 
       let last_check = match last_check {
-        Some(_) => conn.update_acoustid_last_check(db_info.id, now),
-        None => conn.add_acoustid_last_check(db_info.id, now),
+        Some(_) => conn.update_acoustid_last_check(id, now),
+           None => conn.add_acoustid_last_check(id, now),
       };
 
-      let future = last_check.join(fetch_fingerprint)
+      let future = last_check
+        .map_err(|e| ProcessorError::from(e))
+        .join(fetch_fingerprint)
+        .inspect(|&(arg1, _)| debug!("last_check add/update: {:?}", arg1))
         .and_then(|(_, _)| Ok(()));
 
       Box::new(future)
-    }).map_err(|e| {
-      error!("last_check.map_err: {:#?}", e);
-      ProcessorError::NothingUseful
     });
 
     Box::new(future)
@@ -148,7 +151,7 @@ impl<'a> Processor<'a> {
       .name_prefix("pool_thread")
       .create();
 
-    let acoustid = Arc::new(AcoustId::new(api_key.clone()));
+    let acoustid = Arc::new(AcoustId::new(api_key.clone(), thread_pool.clone()));
 
     let conn = Arc::new(DatabaseConnection::new(thread_pool.clone()));
     info!("Database Future: {:?}", conn);
@@ -223,50 +226,10 @@ impl<'a> Processor<'a> {
       }).map_err(|e| {
         error!("err: {:#?}", e);
       });
-/*
-        // Screw the type checker sometimes
-        // Tricks Rust into thinking the Error type is ()
-        if false {
-          return Err(());
-        }
 
-        Ok(())
-      });
-*/
-      //let future: Box<Future<Item = (), Error = ()>> = Box::new(handler);
- 
       println!("did we get here?");
 
       core.run(handler).unwrap();
-      //core.run(future).unwrap();
-/*
-      let mut all_futures: Vec<_> = futures.collect();
-
-      let mut did_process_event = false;
-      while !did_process_event {
-        did_process_event = false;
-
-        let mut i = 0;
-        while i != all_futures.len() {
-          trace!("all_futures[{}]", i);
-          match all_futures[i].poll() {
-            Ok(Async::Ready(res)) => {
-              did_process_event = true;
-
-              println!("[{}] future: {:?}", i, res);
-
-              all_futures.remove(i);
-              i -= 1;
-            },
-            Ok(Async::NotReady) => (),
-
-            Err(ProcessorError::NothingUseful) => (),
-            Err(err) => error!("future error: {:?}", err),
-          }
-          i += 1;
-        }
-      }
-*/
     }
 
     Ok(Box::new(9000))

@@ -31,11 +31,11 @@ impl DatabaseConnection {
     }
   }
 
-  pub fn fetch_file(&self, path: String) -> Box<Future<Item = Option<MediaFileInfo>, Error = io::Error> + Send> {
+  pub fn fetch_file(&self, path: String) -> impl Future<Item = Option<MediaFileInfo>, Error = io::Error> + Send {
     let db = self.pool.clone();
     let path = path.clone();
 
-    let info = self.thread_pool.spawn_fn(move || {
+    self.thread_pool.spawn_fn(move || {
       let conn = db.get().map_err(|e| {
         io::Error::new(io::ErrorKind::Other, format!("timeout: {}", e))
       })?;
@@ -93,16 +93,14 @@ impl DatabaseConnection {
 
       let info = MediaFileInfo::from_db(id, path, title, artist, album, track, track_number, duration, mbid);
       Ok(Some(info))
-    });
-
-    Box::new(info)
+    })
   }
 
-  pub fn get_id(&self, info: &MediaFileInfo) -> Box<Future<Item = i32, Error = io::Error> + Send> {
+  pub fn get_id(&self, info: &MediaFileInfo) -> impl Future<Item = i32, Error = io::Error> + Send {
     let db = self.pool.clone();
     let path = info.path.clone();
 
-    let id = self.thread_pool.spawn_fn(move || {
+    self.thread_pool.spawn_fn(move || {
       let conn = db.get().map_err(|e| {
         io::Error::new(io::ErrorKind::Other, format!("timeout: {}", e))
       })?;
@@ -128,16 +126,14 @@ impl DatabaseConnection {
 
       let id: i32 = row.get(0);
       Ok(id)
-    });
-
-    Box::new(id)
+    })
   }
 
-  pub fn insert_file(&self, info: &MediaFileInfo) -> Box<Future<Item = (), Error = io::Error> + Send> {
+  pub fn insert_file(&self, info: &MediaFileInfo) -> impl Future<Item = (), Error = io::Error> + Send {
     let db = self.pool.clone();
     let info = info.clone();
 
-    let future = self.thread_pool.spawn_fn(move || {
+    self.thread_pool.spawn_fn(move || {
       let conn = db.get().map_err(|e| {
         io::Error::new(io::ErrorKind::Other, format!("timeout: {}", e))
       })?;
@@ -186,15 +182,13 @@ impl DatabaseConnection {
       }
 
       Ok(())
-    });
-
-    Box::new(future)
+    })
   }
 
-  pub fn get_acoustid_last_check(&self, id: i32) -> Box<Future<Item = Option<DateTime<Utc>>, Error = io::Error> + Send> {
+  pub fn get_acoustid_last_check(&self, id: i32) -> impl Future<Item = Option<DateTime<Utc>>, Error = io::Error> + Send {
     let db = self.pool.clone();
 
-    let future = self.thread_pool.spawn_fn(move || {
+    self.thread_pool.spawn_fn(move || {
       let conn = db.get().map_err(|e| {
         io::Error::new(io::ErrorKind::Other, format!("timeout: {}", e))
       })?;
@@ -225,16 +219,14 @@ impl DatabaseConnection {
       let last_check = row.get(0);
 
       Ok(Some(last_check))
-    });
-
-    Box::new(future)
+    })
   }
 
-  pub fn check_valid_recording_uuid(&self, uuid: &Uuid) -> Box<Future<Item = bool, Error = io::Error> + Send> {
+  pub fn check_valid_recording_uuid(&self, uuid: &Uuid) -> impl Future<Item = bool, Error = io::Error> + Send {
     let db = self.pool.clone();
     let uuid = uuid.clone();
 
-    let future = self.thread_pool.spawn_fn(move || {
+    self.thread_pool.spawn_fn(move || {
       let conn = db.get().map_err(|e| {
         io::Error::new(io::ErrorKind::Other, format!("timeout: {}", e))
       })?;
@@ -265,15 +257,13 @@ impl DatabaseConnection {
       debug!("uuid check count: {}", count);
 
       Ok(count > 0)
-    });
-
-    Box::new(future)
+    })
   }
 
-  pub fn update_file_uuid(&self, path: String, uuid: Uuid) -> Box<Future<Item = (), Error = io::Error> + Send> {
+  pub fn update_file_uuid(&self, id: i32, uuid: Uuid) -> impl Future<Item = (), Error = io::Error> + Send {
     let db = self.pool.clone();
 
-    let future = self.thread_pool.spawn_fn(move || {
+    self.thread_pool.spawn_fn(move || {
       let conn = db.get().map_err(|e| {
         io::Error::new(io::ErrorKind::Other, format!("timeout: {}", e))
       })?;
@@ -281,14 +271,14 @@ impl DatabaseConnection {
       let statement = match conn.prepare_cached(r#"
         UPDATE library
         SET mbid = $2
-        WHERE path = $1
+        WHERE id = $1
       "#) {
         Ok(v) => v,
         Err(err) => panic!("error preparing update_file_uuid statement: {:#?}", err),
       };
 
       let res = statement.execute(&[
-        &path,
+        &id,
         &uuid
       ]);
 
@@ -297,12 +287,10 @@ impl DatabaseConnection {
       }
 
       Ok(())
-    });
-
-    Box::new(future)
+    })
   }
 
-  pub fn add_acoustid_last_check(&self, library_id: i32, current_time: DateTime<Utc>) -> Box<Future<Item = (), Error = io::Error> + Send> {
+  pub fn add_acoustid_last_check(&self, library_id: i32, current_time: DateTime<Utc>) -> Box<Future<Item = u64, Error = io::Error> + Send> {
     let db = self.pool.clone();
     let current_time = current_time.clone();
 
@@ -326,17 +314,16 @@ impl DatabaseConnection {
         &current_time
       ]);
 
-      if let Err(err) = res {
-        panic!("unexpected error with last_check insert: {:#?}", err);
+      match res {
+        Ok(v) => Ok(v),
+        Err(err) => Err(io::Error::new(io::ErrorKind::Other, format!("unexpected error with last_check insert: {:#?}", err))),
       }
-
-      Ok(())
     });
 
     Box::new(future)
   }
 
-  pub fn update_acoustid_last_check(&self, library_id: i32, current_time: DateTime<Utc>) -> Box<Future<Item = (), Error = io::Error> + Send> {
+  pub fn update_acoustid_last_check(&self, library_id: i32, current_time: DateTime<Utc>) -> Box<Future<Item = u64, Error = io::Error> + Send> {
     let db = self.pool.clone();
 
     let future = self.thread_pool.spawn_fn(move || {
@@ -358,11 +345,10 @@ impl DatabaseConnection {
         &current_time
       ]);
 
-      if let Err(err) = res {
-        panic!("unexpected error with last_check update: {:#?}", err);
+      match res {
+        Ok(v) => Ok(v),
+        Err(err) => Err(io::Error::new(io::ErrorKind::Other, format!("unexpected error with last_check update: {:#?}", err))),
       }
-
-      Ok(())
     });
 
     Box::new(future)
