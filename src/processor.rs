@@ -31,7 +31,7 @@ struct WorkUnit {
   info: Arc<MediaFileInfo>,
 }
 
-struct ProcessorThread {
+struct DatabaseThread {
 }
 
 pub struct Processor<'a> {
@@ -43,7 +43,7 @@ pub struct Processor<'a> {
   conn: Arc<DatabaseConnection>,
 }
 
-impl ProcessorThread {
+impl DatabaseThread {
   fn insert_path_entry(work: WorkUnit) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError> + Send> {
     info!("path: {}", work.info.path);
 
@@ -226,8 +226,8 @@ impl<'a> Processor<'a> {
           info: Arc::new(info),
         };
 
-        ProcessorThread::call(work)
-      }).for_each(|info| {
+        DatabaseThread::call(work)
+      }).for_each(move |info| {
         info!("info: {:?}", info);
         Ok(())
       }).map_err(|e| {
