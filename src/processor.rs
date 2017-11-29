@@ -229,7 +229,18 @@ impl<'a> Processor<'a> {
         DatabaseThread::call(work)
       }).for_each(move |info| {
         info!("info: {:?}", info);
-        Ok(())
+
+        let doc = info.to_document();
+
+        search.insert_document(doc)
+          .map_err(|e| {
+            error!("elastic error: {:#?}", e);
+            ProcessorError::NothingUseful
+          })
+          .and_then(|res| {
+            debug!("elastic insert res: {:?}", res);
+            Ok(())
+          })
       }).map_err(|e| {
         error!("err: {:#?}", e);
       });

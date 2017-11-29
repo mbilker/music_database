@@ -1,6 +1,6 @@
 use elastic::client::{AsyncClientBuilder, AsyncClient};
 use elastic::client::requests::IndicesExistsRequest;
-use elastic::client::responses::{AsyncResponseBuilder, CommandResponse};
+use elastic::client::responses::{AsyncResponseBuilder, CommandResponse, IndexResponse};
 use elastic::prelude::DocumentType;
 use elastic::Error as ElasticError;
 use futures::Future;
@@ -41,8 +41,9 @@ impl ElasticSearch {
       client.index_create(INDEX_NAME.into())
         .body(ElasticSearch::body())
         .send()
-        .map(|res| {
+        .and_then(|res| {
           info!("Index created with response: {:?}", res);
+          Ok(())
         })
         .map_err(|err| {
           error!("Index creation failed with error: {:#?}", err);
@@ -86,19 +87,14 @@ impl ElasticSearch {
   fn body() -> Value {
     json!({
       "mappings": {
-        "files": MediaFileInfoDocument::index_mapping()
+        MediaFileInfoDocument::name(): MediaFileInfoDocument::index_mapping()
       }
     })
   }
 
-  pub fn insert_document(&self) -> impl Future<Item = (), Error = ElasticError> {
+  pub fn insert_document(&self, doc: MediaFileInfoDocument) -> impl Future<Item = IndexResponse, Error = ElasticError> {
     self.client
-      .document_put_mapping::<MediaFileInfoDocument>(INDEX_NAME.into())
+      .document_index(INDEX_NAME.into(), doc.id.into(), doc)
       .send()
-      .and_then(|res| {
-        debug!("insert_document res: {:#?}", res);
-
-        Ok(())
-      })
   }
 }
