@@ -100,13 +100,20 @@ impl MediaFileInfo {
       }
     }
 
+    // Set the title to the file name (minus extension) if there is no
+    // title set in the file's metadata
+    let title = match media_info.get_title() {
+      Ok(v) => Some(v),
+      Err(_) => media_info.get_with_default_options("FileName").ok()
+    };
+
     // Store the most relevant details in a struct for easy access
     let file_info = MediaFileInfo {
       id:           -1,
 
       path:         path.to_owned(),
 
-      title:        media_info.get_title().ok(),
+      title:        title,
       artist:       media_info.get_performer().ok(),
       album:        media_info.get_album().ok(),
       track:        media_info.get_track_name().ok(),
