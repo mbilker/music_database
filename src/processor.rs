@@ -207,8 +207,6 @@ impl<'a> Processor<'a> {
       let search = search.clone();
 
       let handler = stream::iter_ok(files).and_then(|file| {
-        let file = file.clone();
-
         thread_pool.spawn_fn(move || {
           // A None value indicates a non-valid file instead of an error
           Ok(MediaFileInfo::read_file(&file))
