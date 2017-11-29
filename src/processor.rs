@@ -37,10 +37,12 @@ struct DatabaseThread {
 pub struct Processor<'a> {
   paths: &'a Vec<String>,
 
+  core: Core,
   thread_pool: CpuPool,
 
   acoustid: Arc<AcoustId>,
   conn: Arc<DatabaseConnection>,
+  search: Arc<ElasticSearch>,
 }
 
 impl DatabaseThread {
@@ -177,6 +179,8 @@ impl<'a> Processor<'a> {
       None => return Err(ProcessorError::ApiKeyError),
     };
 
+    let mut core = Core::new().unwrap();
+
     let cores = num_cpus::get();
 
     let thread_pool = CpuPoolBuilder::new()
@@ -185,39 +189,26 @@ impl<'a> Processor<'a> {
       .create();
 
     let acoustid = Arc::new(AcoustId::new(api_key.clone(), thread_pool.clone()));
-
     let conn = Arc::new(DatabaseConnection::new(thread_pool.clone()));
-    info!("Database Future: {:?}", conn);
+    let search = Arc::new(ElasticSearch::new(thread_pool.clone(), core.handle()));
+
+    debug!("Database Connection: {:?}", conn);
+
+    core.run(search.ensure_index_exists()).unwrap();
 
     Ok(Self {
       paths: &config.paths,
 
+      core,
       thread_pool,
 
       acoustid,
       conn,
+      search,
     })
   }
 
-  pub fn scan_dirs(&self) -> Result<Box<i32>, ProcessorError> {
-    let mut core = Core::new().unwrap();
-
-    let search = Arc::new(ElasticSearch::new(self.thread_pool.clone(), core.handle()));
-    let index_exists_future = search.ensure_index_exists();
-    core.run(index_exists_future).unwrap();
-
-    let test = stream::iter_ok(vec!["test1", "foo", "bar", "foobar"]).and_then(|item| {
-      if false {
-        return Err(());
-      }
-
-      info!("stream test, item: {:?}", item);
-      Ok(())
-    }).for_each(|_| {
-      Ok(())
-    });
-    core.run(test).unwrap();
-
+  pub fn scan_dirs(&mut self) -> Result<Box<i32>, ProcessorError> {
     for path in self.paths {
       println!("Scanning {}", path);
 
@@ -230,7 +221,7 @@ impl<'a> Processor<'a> {
 
       let acoustid = self.acoustid.clone();
       let conn = self.conn.clone();
-      let search = search.clone();
+      let search = self.search.clone();
 
       let handler = stream::iter_ok(files).and_then(|file| {
         thread_pool.spawn_fn(move || {
@@ -271,7 +262,7 @@ impl<'a> Processor<'a> {
 
       println!("did we get here?");
 
-      core.run(handler).unwrap();
+      self.core.run(handler).unwrap();
     }
 
     Ok(Box::new(9000))
