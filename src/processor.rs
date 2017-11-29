@@ -80,8 +80,34 @@ impl DatabaseThread {
   }
 
   fn update_path_entry(work: WorkUnit, db_info: MediaFileInfo) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError> + Send> {
+    let id = db_info.id;
+
+    macro_rules! check_fields {
+      ( $($x:ident),* ) => {
+        $((work.info.$x != db_info.$x) || )* false
+      }
+    }
+
+    // Update the database with the file metadata read from the actual file
+    // if the database entry differs from the read file metadata
+    let needs_update = check_fields!(title, artist, album, track, track_number, duration);
+    let update_future: Box<Future<Item = MediaFileInfo, Error = ProcessorError> + Send> = if needs_update {
+      info!("not equal, info: {:#?}, db_info: {:#?}", work.info, db_info);
+
+      let conn = work.conn.clone();
+      let path = work.info.path.clone();
+      Box::new(
+        wrap_err!(work.conn.update_file(id, (*work.info).clone()))
+          .and_then(move |_| wrap_err!(conn.fetch_file(path)))
+          .and_then(|info| Ok(info.unwrap()))
+      )
+    } else {
+      Box::new(future::ok(db_info))
+    };
+
+    // Return early if the entry already has a MusicBrainz ID associated with it
     if work.info.mbid != None {
-      return Box::new(future::ok(db_info));
+      return update_future;
     }
 
     debug!("path does not have associated mbid: {}", work.info.path);
@@ -89,20 +115,20 @@ impl DatabaseThread {
     let acoustid = work.acoustid.clone();
     let conn = work.conn.clone();
 
-    let last_check = wrap_err!(work.conn.get_acoustid_last_check(db_info.id));
+    let last_check = wrap_err!(work.conn.get_acoustid_last_check(id));
+    let joined = update_future.join(last_check);
 
     // Must use trait object or rust will not detect the correct boxing
-    let future = last_check.and_then(move |last_check| -> Box<Future<Item = MediaFileInfo, Error = ProcessorError> + Send> {
+    let future = joined.and_then(move |(db_info, last_check)| -> Box<Future<Item = MediaFileInfo, Error = ProcessorError> + Send> {
       let now: DateTime<Utc> = Utc::now();
       let difference = now.timestamp() - last_check.unwrap_or(Utc.timestamp(0, 0)).timestamp();
 
       // 2 weeks = 1,209,600 seconds
       if difference < 1_209_600 {
-        debug!("id: {}, last check within 2 weeks, not re-checking", db_info.id);
+        debug!("id: {}, last check within 2 weeks, not re-checking", id);
         return Box::new(future::ok(db_info));
       }
 
-      let id = db_info.id;
       info!("id: {}, path: {}", id, db_info.path);
 
       debug!("updating mbid (now: {} - last_check: {:?} = {})", now, last_check, difference);
@@ -225,9 +251,7 @@ impl<'a> Processor<'a> {
         };
 
         DatabaseThread::call(work)
-      }).for_each(move |info| {
-        info!("info: {:?}", info);
-
+      }).and_then(move |info| {
         let doc = info.to_document();
 
         search.insert_document(doc)
@@ -236,9 +260,11 @@ impl<'a> Processor<'a> {
             ProcessorError::NothingUseful
           })
           .and_then(|res| {
-            debug!("elastic insert res: {:?}", res);
+            trace!("elastic insert res: {:?}", res);
             Ok(())
           })
+      }).for_each(|_| {
+        Ok(())
       }).map_err(|e| {
         error!("err: {:#?}", e);
       });

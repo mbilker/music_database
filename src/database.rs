@@ -185,6 +185,46 @@ impl DatabaseConnection {
     })
   }
 
+  pub fn update_file(&self, id: i32, info: MediaFileInfo) -> impl Future<Item = u64, Error = io::Error> + Send {
+    let db = self.pool.clone();
+
+    self.thread_pool.spawn_fn(move || {
+      let conn = db.get().map_err(|e| {
+        io::Error::new(io::ErrorKind::Other, format!("timeout: {}", e))
+      })?;
+
+      let statement = match conn.prepare_cached(r#"
+        UPDATE library
+        SET
+          title = $2,
+          artist = $3,
+          album = $4,
+          track = $5,
+          track_number = $6,
+          duration = $7
+        WHERE id = $1
+      "#) {
+        Ok(v) => v,
+        Err(err) => return Err(io::Error::new(io::ErrorKind::Other, format!("error preparing update_file statement: {:?}", err))),
+      };
+
+      let res = statement.execute(&[
+        &id,
+        &info.title,
+        &info.artist,
+        &info.album,
+        &info.track,
+        &info.track_number,
+        &info.duration,
+      ]);
+
+      match res {
+        Ok(v) => Ok(v),
+        Err(err) => Err(io::Error::new(io::ErrorKind::Other, format!("unexpected error with update_file update: {:?}", err))),
+      }
+    })
+  }
+
   pub fn get_acoustid_last_check(&self, id: i32) -> impl Future<Item = Option<DateTime<Utc>>, Error = io::Error> + Send {
     let db = self.pool.clone();
 
