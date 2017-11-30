@@ -16,6 +16,7 @@ use clap::{App, Arg, SubCommand};
 use dotenv::dotenv;
 
 use music_card_catalog::acoustid::AcoustId;
+use music_card_catalog::elasticsearch::ElasticSearch;
 use music_card_catalog::fingerprint;
 use music_card_catalog::config::Config;
 use music_card_catalog::models::MediaFileInfo;
@@ -92,6 +93,9 @@ fn main() {
         .help("the file path")
         .index(1)
         .required(true)))
+    .subcommand(SubCommand::with_name("dump")
+      .about("dump mappings")
+      .author("Matt Bilker <me@mbilker.us>"))
     .get_matches();
 
   let config: Config = match Config::read_configuration() {
@@ -118,5 +122,7 @@ fn main() {
     let api_key = config.api_keys.get("acoustid").expect("No AcoustID API key defined in config.yaml");
 
     print_fingerprint(api_key, lookup, file_path);
+  } else if let Some(_matches) = matches.subcommand_matches("dump") {
+    println!("Elasticsearch mapping: {:#?}", ElasticSearch::body());
   }
 }
