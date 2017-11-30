@@ -84,12 +84,20 @@ impl ElasticSearch {
       })
   }
 
-  fn body() -> Value {
-    json!({
+  pub fn body() -> Value {
+    let name = MediaFileInfoDocument::name();
+    let mapping = MediaFileInfoDocument::index_mapping();
+
+    let mut data = json!({
       "mappings": {
-        MediaFileInfoDocument::name(): MediaFileInfoDocument::index_mapping()
+        name: mapping,
       }
-    })
+    });
+
+    // Exclude the path field from the _all field
+    data["mappings"][name]["properties"]["path"].as_object_mut().unwrap().insert("include_in_all".to_owned(), json!(false));
+
+    data
   }
 
   pub fn insert_document(&self, doc: MediaFileInfoDocument) -> impl Future<Item = IndexResponse, Error = ElasticError> {
