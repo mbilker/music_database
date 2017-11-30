@@ -86,21 +86,30 @@ impl MediaFileInfo {
     }
 
     // Filter out m3u8 and mpls files, they have a duration according to
-    // mediainfo, but I do not want playlist files in the database. I also
-    // do not want my backup files to be included (orig and bak files).
-    let extension = media_info.get_with_default_options("Format/Extensions");
-    if let Ok(extension) = extension {
-      let ignore = match extension.as_ref() {
+    // mediainfo, but I do not want playlist files in the database. 
+    // I do not want my backup files to be included (orig and bak files).
+    let format_extension = media_info.get_with_default_options("Format/Extensions");
+    let extension = media_info.get_with_default_options("FileExtension");
+    let ignore = match format_extension {
+      Ok(ref format_extension) => match format_extension.as_ref() {
         "m3u8" => true,
         "mpls" => true,
         "orig" => true,
         "bak" => true,
         _ => false,
-      };
-      if ignore {
-        trace!(target: path, "ignore {} extension", extension);
-        return None;
-      }
+      },
+      Err(_) => false,
+    } || match extension {
+      Ok(ref extension) => match extension.as_ref() {
+        "orig" => true,
+        "bak" => true,
+        _ => false,
+      },
+      Err(_) => false,
+    };
+    if ignore {
+      trace!(target: path, "ignoring {:?} or {:?} extension", format_extension, extension);
+      return None;
     }
 
     // Set the title to the file name (minus extension) if there is no
