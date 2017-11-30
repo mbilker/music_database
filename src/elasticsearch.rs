@@ -1,3 +1,5 @@
+use std::env;
+
 use elastic::client::{AsyncClientBuilder, AsyncClient};
 use elastic::client::requests::IndicesExistsRequest;
 use elastic::client::responses::{AsyncResponseBuilder, CommandResponse, IndexResponse};
@@ -19,8 +21,11 @@ pub struct ElasticSearch {
 
 impl ElasticSearch {
   pub fn new(pool: CpuPool, handle: Handle) -> Self {
+    let base_url = env::var("ELASTICSEARCH_URL").expect("ELASTICSEARCH_URL must be set");
+
     let client = AsyncClientBuilder::new()
       .serde_pool(pool)
+      .base_url(base_url)
       .build(&handle.clone())
       .unwrap();
 
