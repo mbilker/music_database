@@ -94,8 +94,6 @@ impl AcoustId {
     client.get(url).map_err(|e|
       ProcessorError::from(e)
     ).and_then(|res| {
-      println!("response: {}", res.status());
-
       res.body().concat2().map_err(|e|
         ProcessorError::from(e)
       ).and_then(move |body|
