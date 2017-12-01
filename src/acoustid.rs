@@ -49,7 +49,7 @@ impl AcoustId {
     }
   }
 
-  fn handle_response(data: Chunk) -> Result<Option<AcoustIdResult>, ProcessorError> {
+  fn handle_response(data: Chunk) -> Result<AcoustIdResult, ProcessorError> {
     let v: AcoustIdResponse = serde_json::from_slice(&data).map_err(|e| {
       ProcessorError::from(e)
     })?;
@@ -69,9 +69,9 @@ impl AcoustId {
     if let Some(first_result) = results.first() {
       debug!("top result: {:?}", first_result);
 
-      Ok(Some(first_result.clone()))
+      Ok(first_result.clone())
     } else {
-      Ok(None)
+      Err(ProcessorError::NoFingerprintMatch)
     }
   }
 
@@ -81,7 +81,7 @@ impl AcoustId {
     fingerprint: String,
     client: Client<HttpsConnector<HttpConnector>>,
     ratelimit: Arc<Mutex<ratelimit::Handle>>
-  ) -> impl Future<Item = Option<AcoustIdResult>, Error = ProcessorError> {
+  ) -> impl Future<Item = AcoustIdResult, Error = ProcessorError> {
     let url = format!("{base}?format=json&client={apiKey}&duration={duration:.0}&fingerprint={fingerprint}&meta=recordings",
       base=LOOKUP_URL,
       apiKey=api_key,
@@ -117,14 +117,15 @@ impl AcoustId {
     }).and_then(move |(duration, fingerprint)| {
       Self::lookup(api_key, duration, fingerprint, client, ratelimit)
     }).and_then(|result| {
-      if let Some(result) = result {
-       if let Some(recordings) = result.recordings {
-          let first = recordings.first().unwrap();
-          return Ok(Some(first.id.clone()));
-        }
+     if let Some(recordings) = result.recordings {
+        let first = recordings.first().unwrap();
+        return Ok(Some(first.id));
       }
 
       Ok(None)
+    }).or_else(|e| match e {
+      ProcessorError::NoFingerprintMatch => Ok(None),
+      _ => Err(e),
     })
   }
 }
