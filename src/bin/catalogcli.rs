@@ -1,8 +1,11 @@
 extern crate clap;
 extern crate dotenv;
 extern crate ffmpeg;
+extern crate hyper;
+extern crate hyper_tls;
 extern crate pretty_env_logger;
 extern crate ratelimit;
+extern crate tokio_core;
 
 #[macro_use]
 extern crate log;
@@ -14,6 +17,9 @@ use std::thread;
 
 use clap::{App, Arg, SubCommand};
 use dotenv::dotenv;
+use hyper::Client;
+use hyper_tls::HttpsConnector;
+use tokio_core::reactor::Core;
 
 use music_card_catalog::acoustid::AcoustId;
 use music_card_catalog::elasticsearch::ElasticSearch;
@@ -46,17 +52,25 @@ fn print_fingerprint(api_key: &String, lookup: bool, path: &str) {
   println!("{}", fingerprint);
 
   if lookup {
+    let mut core = Core::new().unwrap();
+
     let mut limiter = ratelimit::Builder::new().frequency(1).build();
-    let handle = Arc::new(Mutex::new(limiter.make_handle()));
+    let limiter_handle = Arc::new(Mutex::new(limiter.make_handle()));
 
     thread::spawn(move || limiter.run());
 
-    match AcoustId::lookup(api_key.clone(), duration, fingerprint, handle) {
+    let client = Client::configure()
+      .connector(HttpsConnector::new(4, &core.handle()).unwrap())
+      .build(&core.handle());
+
+    let future = AcoustId::lookup(api_key.clone(), duration, fingerprint, client, limiter_handle);
+
+    match core.run(future) {
       Ok(res) => {
         println!("Result: {:#?}", res);
       },
       Err(err) => {
-        error!("error looking up AcoustID for path: {}, {:#?}", path, err);
+        panic!("error looking up AcoustID for path: {}, {:#?}", path, err);
       },
     };
   }
@@ -102,14 +116,14 @@ fn main() {
     Ok(res) => res,
     Err(err) => panic!("Error reading configuration: {:?}", err),
   };
-  info!("Config: {:?}", config);
+  println!("Config: {:?}", config);
 
   if let Some(_matches) = matches.subcommand_matches("scan") {
     let mut processor = Processor::new(&config).unwrap();
 
     let res = processor.scan_dirs();
     if let Err(err) = res {
-      error!("error scannning directories: {:#?}", err);
+      panic!("error scannning directories: {:#?}", err);
     }
   } else if let Some(matches) = matches.subcommand_matches("info") {
     let file_path = matches.value_of("path").unwrap();

@@ -46,7 +46,7 @@ pub struct Processor<'a> {
 }
 
 impl DatabaseThread {
-  fn insert_path_entry(work: WorkUnit) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError> + Send> {
+  fn insert_path_entry(work: WorkUnit) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
     info!("path: {}", work.info.path);
 
     let conn1 = work.conn.clone();
@@ -81,7 +81,7 @@ impl DatabaseThread {
     Box::new(future)
   }
 
-  fn update_path_entry(work: WorkUnit, db_info: MediaFileInfo) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError> + Send> {
+  fn update_path_entry(work: WorkUnit, db_info: MediaFileInfo) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
     let id = db_info.id;
 
     macro_rules! check_fields {
@@ -121,7 +121,7 @@ impl DatabaseThread {
     let joined = update_future.join(last_check);
 
     // Must use trait object or rust will not detect the correct boxing
-    let future = joined.and_then(move |(db_info, last_check)| -> Box<Future<Item = MediaFileInfo, Error = ProcessorError> + Send> {
+    let future = joined.and_then(move |(db_info, last_check)| -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
       let now: DateTime<Utc> = Utc::now();
       let difference = now.timestamp() - last_check.unwrap_or(Utc.timestamp(0, 0)).timestamp();
 
@@ -157,7 +157,7 @@ impl DatabaseThread {
     Box::new(future)
   }
 
-  fn call(work: WorkUnit) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError> + Send> {
+  fn call(work: WorkUnit) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
     // Get the previous value from the database if it exists
     let fetch_future = wrap_err!(work.conn.fetch_file(work.info.path.clone()));
 
@@ -188,7 +188,7 @@ impl<'a> Processor<'a> {
       .name_prefix("pool_thread")
       .create();
 
-    let acoustid = Arc::new(AcoustId::new(api_key.clone(), thread_pool.clone()));
+    let acoustid = Arc::new(AcoustId::new(api_key.clone(), thread_pool.clone(), core.handle()));
     let conn = Arc::new(DatabaseConnection::new(thread_pool.clone()));
     let search = Arc::new(ElasticSearch::new(thread_pool.clone(), core.handle()));
 

@@ -1,5 +1,5 @@
 use ffmpeg;
-use reqwest;
+use hyper;
 use serde_json::Error as SerdeJsonError;
 
 use uuid::Uuid;
@@ -41,7 +41,7 @@ pub enum ProcessorError {
   NoFingerprintMatch,
   NoAudioStream,
 
-  RequestError(reqwest::Error),
+  HyperError(hyper::Error),
   JsonError(SerdeJsonError),
   IoError(io::Error),
   ThreadError(String),
@@ -51,9 +51,9 @@ pub enum ProcessorError {
   ChromaprintError(String),
 }
 
-impl From<reqwest::Error> for ProcessorError {
-  fn from(value: reqwest::Error) -> ProcessorError {
-    ProcessorError::RequestError(value)
+impl From<hyper::Error> for ProcessorError {
+  fn from(value: hyper::Error) -> ProcessorError {
+    ProcessorError::HyperError(value)
   }
 }
 

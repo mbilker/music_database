@@ -1,15 +1,16 @@
 use std::cmp::Ordering;
-use std::io::Read;
 use std::thread;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use futures::Future;
+use futures::{Future, Stream};
 use futures_cpupool::CpuPool;
+use hyper::{Chunk, Client};
+use hyper::client::HttpConnector;
+use hyper_tls::HttpsConnector;
 use ratelimit;
-use reqwest;
 use serde_json;
-
+use tokio_core::reactor::Handle;
 use uuid::Uuid;
 
 use fingerprint;
@@ -21,31 +22,37 @@ static LOOKUP_URL: &'static str = "https://api.acoustid.org/v2/lookup";
 pub struct AcoustId {
   api_key: String,
   ratelimit: Arc<Mutex<ratelimit::Handle>>,
+
+  handle: Handle,
   thread_pool: CpuPool,
 }
 
 impl AcoustId {
-  pub fn new(api_key: String, thread_pool: CpuPool) -> Self {
+  pub fn new(api_key: String, thread_pool: CpuPool, handle: Handle) -> Self {
     let mut limiter = ratelimit::Builder::new()
       .capacity(3)
       .quantum(3)
       .interval(Duration::new(1, 0)) // 3 requests every 1 second
       .build();
-    let handle = limiter.make_handle();
+    let limiter_handle = limiter.make_handle();
 
     thread::spawn(move || limiter.run());
 
-    let ratelimit = Arc::new(Mutex::new(handle));
+    let ratelimit = Arc::new(Mutex::new(limiter_handle));
 
     Self {
       api_key,
       ratelimit,
+
+      handle,
       thread_pool,
     }
   }
 
-  fn handle_response(data: String) -> Result<Option<AcoustIdResult>, ProcessorError> {
-    let v: AcoustIdResponse = try!(serde_json::from_str(&data));
+  fn handle_response(data: Chunk) -> Result<Option<AcoustIdResult>, ProcessorError> {
+    let v: AcoustIdResponse = serde_json::from_slice(&data).map_err(|e| {
+      ProcessorError::from(e)
+    })?;
     debug!("v: {:?}", v);
 
     let mut results: Vec<AcoustIdResult> = v.results;
@@ -72,38 +79,46 @@ impl AcoustId {
     api_key: String,
     duration: f64,
     fingerprint: String,
+    client: Client<HttpsConnector<HttpConnector>>,
     ratelimit: Arc<Mutex<ratelimit::Handle>>
-  ) -> Result<Option<AcoustIdResult>, ProcessorError> {
+  ) -> impl Future<Item = Option<AcoustIdResult>, Error = ProcessorError> {
     let url = format!("{base}?format=json&client={apiKey}&duration={duration:.0}&fingerprint={fingerprint}&meta=recordings",
       base=LOOKUP_URL,
       apiKey=api_key,
       duration=duration,
       fingerprint=fingerprint
-    );
+    ).parse().unwrap();
 
-    let mut resp = {
-      ratelimit.lock().unwrap().wait();
+    ratelimit.lock().unwrap().wait();
 
-      try!(reqwest::get(&*url))
-    };
+    client.get(url).map_err(|e|
+      ProcessorError::from(e)
+    ).and_then(|res| {
+      println!("response: {}", res.status());
 
-    let mut content = String::new();
-    try!(resp.read_to_string(&mut content));
-    debug!("response: {}", content);
-
-    Self::handle_response(content)
+      res.body().concat2().map_err(|e|
+        ProcessorError::from(e)
+      ).and_then(move |body|
+        Self::handle_response(body)
+      )
+    })
   }
 
-  pub fn parse_file(&self, path: String) -> Box<Future<Item = Uuid, Error = ProcessorError> + Send> {
+  pub fn parse_file(&self, path: String) -> impl Future<Item = Uuid, Error = ProcessorError> {
     let api_key = self.api_key.clone();
     let ratelimit = self.ratelimit.clone();
 
-    let uuid = self.thread_pool.spawn_fn(move || {
+    let client = Client::configure()
+      .connector(HttpsConnector::new(4, &self.handle).unwrap())
+      .build(&self.handle);
+
+    self.thread_pool.spawn_fn(move || {
       // Eat up fingerprinting errors, I mostly see them when a file is not easily
       // parsed like WAV files
-      let (duration, fingerprint) = try!(fingerprint::get(&path));
-
-      let result = try!(Self::lookup(api_key, duration, fingerprint, ratelimit));
+      fingerprint::get(&path)
+    }).and_then(move |(duration, fingerprint)| {
+      Self::lookup(api_key, duration, fingerprint, client, ratelimit)
+    }).and_then(|result| {
       if let Some(result) = result {
        if let Some(recordings) = result.recordings {
           let first = recordings.first().unwrap();
@@ -112,9 +127,7 @@ impl AcoustId {
       }
 
       Err(ProcessorError::NoFingerprintMatch)
-    });
-
-    Box::new(uuid)
+    })
   }
 }
 
