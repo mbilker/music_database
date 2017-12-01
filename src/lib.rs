@@ -34,6 +34,7 @@ pub mod config;
 pub mod database;
 pub mod elasticsearch;
 pub mod file_scanner;
+pub mod file_processor;
 pub mod fingerprint;
 pub mod models;
 pub mod processor;
