@@ -1,3 +1,4 @@
+use std::io;
 use std::sync::Arc;
 
 use num_cpus;
@@ -71,7 +72,10 @@ impl DatabaseThread {
       acoustid_future.join(info_future)
     }).and_then(move |(mbid, info)| {
       let last_check = conn2.add_acoustid_last_check(info.id, Utc::now());
-      let uuid = conn2.update_file_uuid(info.id, mbid);
+      let uuid: Box<Future<Item = (), Error = io::Error>> = match mbid {
+        Some(mbid) => Box::new(conn2.update_file_uuid(info.id, mbid)),
+        None => Box::new(future::ok(())),
+      };
 
       wrap_err!(last_check
         .join(uuid))
@@ -136,9 +140,12 @@ impl DatabaseThread {
       debug!("updating mbid (now: {} - last_check: {:?} = {})", now, last_check, difference);
       let conn2 = conn.clone();
       let fetch_fingerprint = acoustid.parse_file(db_info.path.clone())
-        .and_then(move |mbid|
-          wrap_err!(conn2.update_file_uuid(id, mbid))
-        );
+        .and_then(move |mbid| -> Box<Future<Item = (), Error = ProcessorError>> {
+          match mbid {
+            Some(mbid) => Box::new(wrap_err!(conn2.update_file_uuid(id, mbid))),
+            None => Box::new(future::ok(())),
+          }
+        });
 
       let last_check = match last_check {
         Some(_) => conn.update_acoustid_last_check(id, now),

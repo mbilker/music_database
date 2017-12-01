@@ -102,7 +102,7 @@ impl AcoustId {
     })
   }
 
-  pub fn parse_file(&self, path: String) -> impl Future<Item = Uuid, Error = ProcessorError> {
+  pub fn parse_file(&self, path: String) -> impl Future<Item = Option<Uuid>, Error = ProcessorError> {
     let api_key = self.api_key.clone();
     let ratelimit = self.ratelimit.clone();
 
@@ -120,11 +120,11 @@ impl AcoustId {
       if let Some(result) = result {
        if let Some(recordings) = result.recordings {
           let first = recordings.first().unwrap();
-          return Ok(first.id.clone());
+          return Ok(Some(first.id.clone()));
         }
       }
 
-      Err(ProcessorError::NoFingerprintMatch)
+      Ok(None)
     })
   }
 }
