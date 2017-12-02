@@ -110,8 +110,6 @@ impl<'a> Processor<'a> {
         error!("err: {:#?}", e);
       });
 
-      println!("did we get here?");
-
       self.core.run(handler).unwrap();
     }
 
