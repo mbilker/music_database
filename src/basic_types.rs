@@ -30,7 +30,7 @@ pub struct AcoustIdResult {
 #[derive(Debug, Deserialize)]
 pub struct AcoustIdResponse {
   pub status: String,
-  pub results: Vec<AcoustIdResult>,
+  pub results: Option<Vec<AcoustIdResult>>,
 }
 
 #[derive(Debug)]

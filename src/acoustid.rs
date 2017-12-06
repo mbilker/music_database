@@ -55,7 +55,11 @@ impl AcoustId {
     })?;
     debug!("v: {:?}", v);
 
-    let mut results: Vec<AcoustIdResult> = v.results;
+    let mut results = match v.results {
+      Some(v) => v,
+      None => return Err(ProcessorError::NoFingerprintMatch),
+    };
+
     results.sort_by(|a, b| {
       if b.score > a.score {
         Ordering::Greater
