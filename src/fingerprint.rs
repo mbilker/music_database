@@ -25,11 +25,11 @@ pub fn get(path: &str) -> Result<(f64, String), ProcessorError> {
 
     duration = stream.duration() as f64 * f64::from(stream.time_base());
     index = stream.index();
-    debug!(target: path, "best audio stream index: {}", index);
+    debug!("best audio stream index: {}", index);
 
     let codec = stream.codec();
-    debug!(target: path, "medium: {:?}", codec.medium());
-    debug!(target: path, "id: {:?}", codec.id());
+    debug!("medium: {:?}", codec.medium());
+    debug!("id: {:?}", codec.id());
 
     let mut decoder = try!(stream.codec().decoder().audio());
     try!(decoder.set_parameters(stream.parameters()));
@@ -46,17 +46,17 @@ pub fn get(path: &str) -> Result<(f64, String), ProcessorError> {
     decoder.set_channel_layout(ChannelLayout::default(channels));
   }
 
-  debug!(target: path, "duration: {}", duration);
-  debug!(target: path, "bit_rate: {}", decoder.bit_rate());
-  debug!(target: path, "max_bit_rate: {}", decoder.max_bit_rate());
-  debug!(target: path, "delay: {}", decoder.delay());
-  debug!(target: path, "audio.rate: {}", samplerate);
-  debug!(target: path, "audio.channels: {}", channels);
-  debug!(target: path, "audio.format: {:?} (name: {})", decoder.format(), decoder.format().name());
-  debug!(target: path, "audio.frames: {}", decoder.frames());
-  debug!(target: path, "audio.align: {}", decoder.align());
-  debug!(target: path, "audio.channel_layout: {:?} (channels: {})", decoder.channel_layout(), decoder.channel_layout().channels());
-  debug!(target: path, "audio.frame_start: {:?}", decoder.frame_start());
+  debug!("duration: {}", duration);
+  debug!("bit_rate: {}", decoder.bit_rate());
+  debug!("max_bit_rate: {}", decoder.max_bit_rate());
+  debug!("delay: {}", decoder.delay());
+  debug!("audio.rate: {}", samplerate);
+  debug!("audio.channels: {}", channels);
+  debug!("audio.format: {:?} (name: {})", decoder.format(), decoder.format().name());
+  debug!("audio.frames: {}", decoder.frames());
+  debug!("audio.align: {}", decoder.align());
+  debug!("audio.channel_layout: {:?} (channels: {})", decoder.channel_layout(), decoder.channel_layout().channels());
+  debug!("audio.frame_start: {:?}", decoder.frame_start());
 
   // Setup the converter to signed 16-bit interleaved needed for
   // accurate fingerprints for AcoustID
@@ -69,11 +69,11 @@ pub fn get(path: &str) -> Result<(f64, String), ProcessorError> {
   // of audio based on AcoustID's reference implementation
   let stream_limit = (MAX_AUDIO_DURATION as u32) * samplerate;
   let mut stream_size = 0;
-  debug!(target: path, "stream_limit: {}", stream_limit);
+  debug!("stream_limit: {}", stream_limit);
 
   // Initialize Chromaprint context
   let mut chroma = Chromaprint::new();
-  if !chroma.start(samplerate as i32, channels as i32) {
+  if !chroma.start(samplerate as i32, channels) {
     return Err(ProcessorError::ChromaprintError("failed to start chromaprint".to_owned()));
   }
 
@@ -98,7 +98,7 @@ pub fn get(path: &str) -> Result<(f64, String), ProcessorError> {
     let mut processed = Audio::empty();
     let delay = try!(convert.run(&decoded, &mut processed));
 
-    trace!(target: path, "packet size: {}, delay: {:?}, frame: {:?}", packet.size(), delay, decoded);
+    trace!("packet size: {}, delay: {:?}, processed: {:?}", packet.size(), delay, processed);
 
     let mut frame_size = processed.samples() as u32;
     let remaining = stream_limit - stream_size;
@@ -135,11 +135,11 @@ pub fn get(path: &str) -> Result<(f64, String), ProcessorError> {
   }
 
   let finish_res = chroma.finish();
-  debug!(target: path, "finish_res: {}", finish_res);
+  debug!("finish_res: {}", finish_res);
 
   let fingerprint = chroma.fingerprint();
   if let Some(fingerprint) = fingerprint {
-    debug!(target: path, "fingerprint: {}", fingerprint);
+    debug!("fingerprint: {}", fingerprint);
 
     Ok((duration, fingerprint))
   } else {
