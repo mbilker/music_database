@@ -88,10 +88,12 @@ impl MediaFileInfo {
     // Filter out m3u8 and mpls files, they have a duration according to
     // mediainfo, but I do not want playlist files in the database. 
     // I do not want my backup files to be included (orig and bak files).
+    // APE files break decoding and I do not know why and I do not use them.
     let format_extension = media_info.get_with_default_options("Format/Extensions");
     let extension = media_info.get_with_default_options("FileExtension");
     let ignore = match format_extension {
       Ok(ref format_extension) => match format_extension.as_ref() {
+        "ape mac" => true,
         "m3u8" => true,
         "mpls" => true,
         "orig" => true,
