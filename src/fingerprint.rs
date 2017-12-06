@@ -50,16 +50,13 @@ pub fn get(path: &str) -> Result<(f64, String), ProcessorError> {
   debug!(target: path, "bit_rate: {}", decoder.bit_rate());
   debug!(target: path, "max_bit_rate: {}", decoder.max_bit_rate());
   debug!(target: path, "delay: {}", decoder.delay());
-  debug!(target: path, "audio.rate: {}", decoder.rate());
-  debug!(target: path, "audio.channels: {}", decoder.channels());
+  debug!(target: path, "audio.rate: {}", samplerate);
+  debug!(target: path, "audio.channels: {}", channels);
   debug!(target: path, "audio.format: {:?} (name: {})", decoder.format(), decoder.format().name());
   debug!(target: path, "audio.frames: {}", decoder.frames());
   debug!(target: path, "audio.align: {}", decoder.align());
-  debug!(target: path, "audio.channel_layout: {:?}", decoder.channel_layout());
+  debug!(target: path, "audio.channel_layout: {:?} (channels: {})", decoder.channel_layout(), decoder.channel_layout().channels());
   debug!(target: path, "audio.frame_start: {:?}", decoder.frame_start());
-
-  let samplerate = decoder.rate();
-  let channels = decoder.channels();
 
   // Setup the converter to signed 16-bit interleaved needed for
   // accurate fingerprints for AcoustID
