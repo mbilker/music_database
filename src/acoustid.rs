@@ -110,6 +110,8 @@ impl AcoustId {
     let api_key = self.api_key.clone();
     let ratelimit = self.ratelimit.clone();
 
+    let path2 = path.clone();
+
     let client = Client::configure()
       .connector(HttpsConnector::new(4, &self.handle).unwrap())
       .build(&self.handle);
@@ -127,7 +129,11 @@ impl AcoustId {
       }
 
       Ok(None)
-    }).or_else(|e| match e {
+    }).or_else(move |e| match e {
+      ProcessorError::NoAudioStream => {
+        error!("path: {}, weird case with no audio stream during fingerprinting (bad extension?)", path2);
+        Ok(None)
+      },
       ProcessorError::NoFingerprintMatch => Ok(None),
       _ => Err(e),
     })
