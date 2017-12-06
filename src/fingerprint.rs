@@ -1,4 +1,5 @@
 use chromaprint::Chromaprint;
+use ffmpeg::ChannelLayout;
 use ffmpeg::format::{self, Sample};
 use ffmpeg::frame::Audio;
 use ffmpeg::media::Type;
@@ -35,6 +36,15 @@ pub fn get(path: &str) -> Result<(f64, String), ProcessorError> {
 
     decoder
   };
+
+  let samplerate = decoder.rate();
+  let channels = decoder.channels() as i32;
+
+  // Check for empty channel layout and set to a default one for the number
+  // of channels
+  if decoder.channel_layout().channels() == 0 {
+    decoder.set_channel_layout(ChannelLayout::default(channels));
+  }
 
   debug!(target: path, "duration: {}", duration);
   debug!(target: path, "bit_rate: {}", decoder.bit_rate());
