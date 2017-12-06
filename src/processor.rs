@@ -106,8 +106,6 @@ impl<'a> Processor<'a> {
           })
       }).for_each(|_| {
         Ok(())
-      }).map_err(|e| {
-        error!("err: {:#?}", e);
       });
 
       self.core.run(handler).unwrap();
