@@ -1,6 +1,7 @@
+use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::thread;
-use std::sync::{Arc, Mutex};
+use std::rc::Rc;
 use std::time::Duration;
 
 use futures::{Future, Stream};
@@ -21,9 +22,9 @@ static LOOKUP_URL: &'static str = "https://api.acoustid.org/v2/lookup";
 
 pub struct AcoustId {
   api_key: String,
-  ratelimit: Arc<Mutex<ratelimit::Handle>>,
+  client: Rc<Client<HttpsConnector<HttpConnector>>>,
+  ratelimit: Rc<RefCell<ratelimit::Handle>>,
 
-  handle: Handle,
   thread_pool: CpuPool,
 }
 
@@ -38,13 +39,15 @@ impl AcoustId {
 
     thread::spawn(move || limiter.run());
 
-    let ratelimit = Arc::new(Mutex::new(limiter_handle));
+    let client = Client::configure()
+      .connector(HttpsConnector::new(4, &handle).unwrap())
+      .build(&handle);
 
     Self {
       api_key,
-      ratelimit,
+      client: Rc::new(client),
+      ratelimit: Rc::new(RefCell::new(limiter_handle)),
 
-      handle,
       thread_pool,
     }
   }
@@ -83,8 +86,8 @@ impl AcoustId {
     api_key: String,
     duration: f64,
     fingerprint: String,
-    client: Client<HttpsConnector<HttpConnector>>,
-    ratelimit: Arc<Mutex<ratelimit::Handle>>
+    client: Rc<Client<HttpsConnector<HttpConnector>>>,
+    ratelimit: Rc<RefCell<ratelimit::Handle>>
   ) -> impl Future<Item = AcoustIdResult, Error = ProcessorError> {
     let url = format!("{base}?format=json&client={apiKey}&duration={duration:.0}&fingerprint={fingerprint}&meta=recordings",
       base=LOOKUP_URL,
@@ -93,7 +96,7 @@ impl AcoustId {
       fingerprint=fingerprint
     ).parse().unwrap();
 
-    ratelimit.lock().unwrap().wait();
+    ratelimit.borrow_mut().wait();
 
     client.get(url).map_err(|e|
       ProcessorError::from(e)
@@ -108,13 +111,10 @@ impl AcoustId {
 
   pub fn parse_file(&self, path: String) -> impl Future<Item = Option<Uuid>, Error = ProcessorError> {
     let api_key = self.api_key.clone();
+    let client = self.client.clone();
     let ratelimit = self.ratelimit.clone();
 
     let path2 = path.clone();
-
-    let client = Client::configure()
-      .connector(HttpsConnector::new(4, &self.handle).unwrap())
-      .build(&self.handle);
 
     self.thread_pool.spawn_fn(move || {
       // Eat up fingerprinting errors, I mostly see them when a file is not easily

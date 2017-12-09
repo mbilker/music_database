@@ -12,7 +12,8 @@ extern crate log;
 
 extern crate music_card_catalog;
 
-use std::sync::{Arc, Mutex};
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::thread;
 
 use clap::{App, Arg, SubCommand};
@@ -55,13 +56,14 @@ fn print_fingerprint(api_key: &String, lookup: bool, path: &str) {
     let mut core = Core::new().unwrap();
 
     let mut limiter = ratelimit::Builder::new().frequency(1).build();
-    let limiter_handle = Arc::new(Mutex::new(limiter.make_handle()));
+    let limiter_handle = Rc::new(RefCell::new(limiter.make_handle()));
 
     thread::spawn(move || limiter.run());
 
     let client = Client::configure()
-      .connector(HttpsConnector::new(4, &core.handle()).unwrap())
+      .connector(HttpsConnector::new(1, &core.handle()).unwrap())
       .build(&core.handle());
+    let client = Rc::new(client);
 
     let future = AcoustId::lookup(api_key.clone(), duration, fingerprint, client, limiter_handle);
 
