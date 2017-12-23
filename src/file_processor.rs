@@ -96,7 +96,7 @@ impl FileProcessor {
 
       wrap_err!(last_check
         .join(uuid))
-	.and_then(|(_, _)| Ok(info))
+        .and_then(|(_, _)| Ok(info))
     });
 
     Box::new(future)
