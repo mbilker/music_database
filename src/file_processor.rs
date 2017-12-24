@@ -164,13 +164,12 @@ impl FileProcessor {
           }
         });
 
-      let last_check = match last_check {
+      let last_check = wrap_err!(match last_check {
         Some(_) => conn.update_acoustid_last_check(id, now),
            None => conn.add_acoustid_last_check(id, now),
-      };
+      });
 
       let future = last_check
-        .map_err(|e| ProcessorError::from(e))
         .join(fetch_fingerprint)
         .inspect(|&(arg1, _)| debug!("last_check add/update: {:?}", arg1))
         .and_then(|(_, _)| Ok(db_info));
