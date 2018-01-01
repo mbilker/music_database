@@ -32,6 +32,62 @@ impl DatabaseConnection {
     }
   }
 
+  pub fn insert_file(&self, info: &MediaFileInfo) -> impl Future<Item = (), Error = io::Error> + Send {
+    let db = self.pool.clone();
+    let info = info.clone();
+
+    self.thread_pool.spawn_fn(move || {
+      let conn = db.get().map_err(|e| {
+        io::Error::new(io::ErrorKind::Other, format!("timeout: {}", e))
+      })?;
+
+      let statement = match conn.prepare_cached(r#"
+        INSERT INTO library (
+          title,
+          artist,
+          album,
+          track,
+          track_number,
+          duration,
+          path
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+      "#) {
+        Ok(v) => v,
+        Err(err) => panic!("error preparing insert_file statement: {:#?}", err),
+      };
+
+      let res = statement.execute(&[
+        &info.title,
+        &info.artist,
+        &info.album,
+        &info.track,
+        &info.track_number,
+        &info.duration,
+        &info.path
+      ]);
+
+      if let Err(err) = res {
+        if let Some(code) = err.code() {
+          if code != &UNIQUE_VIOLATION {
+            info!("{}", info.path);
+            info!("- {:#?}", info);
+            error!("SQL insert error: {:#?}", err);
+
+            return Err(io::Error::new(io::ErrorKind::Other, "unexpected error with SQL insert".to_owned()));
+          }
+        } else {
+          info!("{}", info.path);
+          info!("- {:#?}", info);
+          error!("SQL insert error: {:#?}", err);
+
+          return Err(io::Error::new(io::ErrorKind::Other, "unexpected error with SQL insert".to_owned()));
+        }
+      }
+
+      Ok(())
+    })
+  }
+
   pub fn fetch_file(&self, path: String) -> impl Future<Item = Option<MediaFileInfo>, Error = io::Error> + Send {
     let db = self.pool.clone();
     let path = path.clone();
@@ -97,95 +153,6 @@ impl DatabaseConnection {
     })
   }
 
-  pub fn get_id(&self, info: &MediaFileInfo) -> impl Future<Item = i32, Error = io::Error> + Send {
-    let db = self.pool.clone();
-    let path = info.path.clone();
-
-    self.thread_pool.spawn_fn(move || {
-      let conn = db.get().map_err(|e| {
-        io::Error::new(io::ErrorKind::Other, format!("timeout: {}", e))
-      })?;
-
-      let statement = match conn.prepare_cached(r#"
-        SELECT
-          id
-        FROM library
-        WHERE path = $1
-      "#) {
-        Ok(v) => v,
-        Err(err) => panic!("error preparing get_id statement: {:#?}", err),
-      };
-
-      let rows = match statement.query(&[
-        &path
-      ]) {
-        Ok(v) => v,
-        Err(err) => panic!("error retrieving id from database: {:#?}", err),
-      };
-
-      let row = rows.get(0);
-
-      let id: i32 = row.get(0);
-      Ok(id)
-    })
-  }
-
-  pub fn insert_file(&self, info: &MediaFileInfo) -> impl Future<Item = (), Error = io::Error> + Send {
-    let db = self.pool.clone();
-    let info = info.clone();
-
-    self.thread_pool.spawn_fn(move || {
-      let conn = db.get().map_err(|e| {
-        io::Error::new(io::ErrorKind::Other, format!("timeout: {}", e))
-      })?;
-
-      let statement = match conn.prepare_cached(r#"
-        INSERT INTO library (
-          title,
-          artist,
-          album,
-          track,
-          track_number,
-          duration,
-          path
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-      "#) {
-        Ok(v) => v,
-        Err(err) => panic!("error preparing insert_file statement: {:#?}", err),
-      };
-
-      let res = statement.execute(&[
-        &info.title,
-        &info.artist,
-        &info.album,
-        &info.track,
-        &info.track_number,
-        &info.duration,
-        &info.path
-      ]);
-
-      if let Err(err) = res {
-        if let Some(code) = err.code() {
-          if code != &UNIQUE_VIOLATION {
-            info!("{}", info.path);
-            info!("- {:#?}", info);
-            error!("SQL insert error: {:#?}", err);
-
-            return Err(io::Error::new(io::ErrorKind::Other, "unexpected error with SQL insert".to_owned()));
-          }
-        } else {
-          info!("{}", info.path);
-          info!("- {:#?}", info);
-          error!("SQL insert error: {:#?}", err);
-
-          return Err(io::Error::new(io::ErrorKind::Other, "unexpected error with SQL insert".to_owned()));
-        }
-      }
-
-      Ok(())
-    })
-  }
-
   pub fn update_file(&self, id: i32, info: MediaFileInfo) -> impl Future<Item = u64, Error = io::Error> + Send {
     let db = self.pool.clone();
 
@@ -223,6 +190,67 @@ impl DatabaseConnection {
         Ok(v) => Ok(v),
         Err(err) => Err(io::Error::new(io::ErrorKind::Other, format!("unexpected error with update_file update: {:?}", err))),
       }
+    })
+  }
+
+  pub fn delete_file(&self, id: i32) -> impl Future<Item = u64, Error = io::Error> + Send {
+    let db = self.pool.clone();
+
+    self.thread_pool.spawn_fn(move || {
+      let conn = db.get().map_err(|e| {
+        io::Error::new(io::ErrorKind::Other, format!("timeout: {}", e))
+      })?;
+
+      let statement = match conn.prepare_cached(r#"
+        DELETE
+        FROM library
+        WHERE id = $1
+      "#) {
+        Ok(v) => v,
+        Err(err) => return Err(io::Error::new(io::ErrorKind::Other, format!("error preparing delete_file statement: {:#?}", err))),
+      };
+
+      let res = statement.execute(&[
+        &id,
+      ]);
+
+      match res {
+        Ok(v) => Ok(v),
+        Err(err) => Err(io::Error::new(io::ErrorKind::Other, format!("unexpected error with delete_file delete: {:?}", err))),
+      }
+    })
+  }
+
+  pub fn get_id(&self, info: &MediaFileInfo) -> impl Future<Item = i32, Error = io::Error> + Send {
+    let db = self.pool.clone();
+    let path = info.path.clone();
+
+    self.thread_pool.spawn_fn(move || {
+      let conn = db.get().map_err(|e| {
+        io::Error::new(io::ErrorKind::Other, format!("timeout: {}", e))
+      })?;
+
+      let statement = match conn.prepare_cached(r#"
+        SELECT
+          id
+        FROM library
+        WHERE path = $1
+      "#) {
+        Ok(v) => v,
+        Err(err) => panic!("error preparing get_id statement: {:#?}", err),
+      };
+
+      let rows = match statement.query(&[
+        &path
+      ]) {
+        Ok(v) => v,
+        Err(err) => panic!("error retrieving id from database: {:#?}", err),
+      };
+
+      let row = rows.get(0);
+
+      let id: i32 = row.get(0);
+      Ok(id)
     })
   }
 
