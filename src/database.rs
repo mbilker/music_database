@@ -377,7 +377,7 @@ impl DatabaseConnection {
         WHERE library_id = $1
       "#) {
         Ok(v) => v,
-        Err(err) => panic!("error preparing update_acoustid_last_check statement: {:#?}", err),
+        Err(err) => return Err(io::Error::new(io::ErrorKind::Other, format!("error preparing update_acoustid_last_check statement: {:#?}", err))),
       };
 
       let res = statement.execute(&[
