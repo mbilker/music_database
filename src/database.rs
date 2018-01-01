@@ -395,8 +395,8 @@ impl DatabaseConnection {
     Box::new(future)
   }
 
-  pub fn path_iter<F>(&self, cb: F) -> Result<(), io::Error>
-    where F: Fn(i32, String) -> ()
+  pub fn path_iter<F>(&self, mut cb: F) -> Result<(), io::Error>
+    where F: FnMut(i32, String) -> ()
   {
     let db = self.pool.clone();
     let conn = db.get().map_err(|e| {
