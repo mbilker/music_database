@@ -2,6 +2,7 @@ use std::env;
 use std::io;
 
 use chrono::{DateTime, Utc};
+use fallible_iterator::FallibleIterator;
 use futures::Future;
 use futures_cpupool::CpuPool;
 use postgres::error::UNIQUE_VIOLATION;
@@ -392,5 +393,31 @@ impl DatabaseConnection {
     });
 
     Box::new(future)
+  }
+
+  pub fn path_iter<F>(&self, cb: F) -> Result<(), io::Error>
+    where F: Fn(i32, String) -> ()
+  {
+    let db = self.pool.clone();
+    let conn = db.get().map_err(|e| {
+      io::Error::new(io::ErrorKind::Other, format!("timeout: {}", e))
+    })?;
+
+    let stmt = match conn.prepare_cached("SELECT id, path FROM library") {
+      Ok(v) => v,
+      Err(err) => return Err(io::Error::new(io::ErrorKind::Other, format!("error preparing path_iter statement: {:#?}", err))),
+    };
+
+    let trans = conn.transaction().unwrap();
+    let mut rows = stmt.lazy_query(&trans, &[], 100).unwrap();
+
+    while let Some(row) = rows.next().unwrap() {
+      let id: i32 = row.get(0);
+      let path: String = row.get(1);
+
+      cb(id, path);
+    }
+
+    Ok(())
   }
 }
