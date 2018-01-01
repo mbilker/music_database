@@ -5,6 +5,7 @@ extern crate chrono;
 extern crate crossbeam;
 extern crate dotenv;
 extern crate elastic;
+extern crate fallible_iterator;
 extern crate ffmpeg;
 extern crate futures;
 extern crate futures_cpupool;
