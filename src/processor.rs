@@ -41,9 +41,9 @@ impl<'a> Processor<'a> {
       .name_prefix("pool_thread")
       .create();
 
-    let acoustid = Arc::new(AcoustId::new(api_key.clone(), thread_pool.clone(), core.handle()));
+    let acoustid = Arc::new(AcoustId::new(api_key.clone(), thread_pool.clone(), &core.handle()));
     let conn = Arc::new(DatabaseConnection::new(thread_pool.clone()));
-    let search = Arc::new(ElasticSearch::new(thread_pool.clone(), core.handle()));
+    let search = Arc::new(ElasticSearch::new(thread_pool.clone(), &core.handle()));
 
     debug!("Database Connection: {:?}", conn);
 
@@ -63,7 +63,7 @@ impl<'a> Processor<'a> {
   }
 
   pub fn prune_db(&mut self) -> Result<(), ProcessorError> {
-    let conn = self.conn.clone();
+    let conn = Arc::clone(&self.conn);
     let remote = self.core.remote();
 
     let future = self.conn.path_iter(move |id, path| {
@@ -71,7 +71,7 @@ impl<'a> Processor<'a> {
       if !path.exists() {
         println!("id: {}, path: {:?}", id, path);
 
-        let conn2 = conn.clone();
+        let conn2 = Arc::clone(&conn);
 
         let future = conn.delete_acoustid_last_check(id)
           .and_then(move |_| conn2.delete_file(id))
@@ -95,16 +95,16 @@ impl<'a> Processor<'a> {
     for path in self.paths {
       println!("Scanning {}", path);
 
-      let dir_walk = file_scanner::scan_dir(&path);
-      let files: Vec<String> = dir_walk.iter().map(|e| e.clone()).collect();
+      let dir_walk = file_scanner::scan_dir(path);
+      let files: Vec<String> = dir_walk.to_vec();
 
       debug!("files length: {}", files.len());
 
       let thread_pool = self.thread_pool.clone();
 
-      let acoustid = self.acoustid.clone();
-      let conn = self.conn.clone();
-      let search = self.search.clone();
+      let acoustid = Arc::clone(&self.acoustid);
+      let conn = Arc::clone(&self.conn);
+      let search = Arc::clone(&self.search);
 
       let handler = stream::iter_ok(files).and_then(|file| {
         thread_pool.spawn_fn(move || {
@@ -114,10 +114,10 @@ impl<'a> Processor<'a> {
       }).filter_map(|info| {
         info
       }).and_then(move |info| {
-        let acoustid = acoustid.clone();
-        let conn = conn.clone();
+        let acoustid = Arc::clone(&acoustid);
+        let conn = Arc::clone(&conn);
 
-        let worker = FileProcessor::new(acoustid, conn);
+        let worker = FileProcessor::new(&acoustid, &conn);
         worker.call(info)
       }).and_then(move |info| {
         let doc = info.to_document();

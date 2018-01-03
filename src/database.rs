@@ -88,9 +88,9 @@ impl DatabaseConnection {
     })
   }
 
-  pub fn fetch_file(&self, path: String) -> impl Future<Item = Option<MediaFileInfo>, Error = io::Error> + Send {
+  pub fn fetch_file(&self, path: &str) -> impl Future<Item = Option<MediaFileInfo>, Error = io::Error> + Send {
     let db = self.pool.clone();
-    let path = path.clone();
+    let path = path.to_string();
 
     self.thread_pool.spawn_fn(move || {
       let conn = db.get().map_err(|e| {
@@ -128,7 +128,7 @@ impl DatabaseConnection {
         },
       };
 
-      if rows.len() == 0 {
+      if rows.is_empty() {
         return Ok(None);
       }
 
@@ -148,7 +148,7 @@ impl DatabaseConnection {
         warn!("Path from database is not the same as argument, path: {}", path);
       }
 
-      let info = MediaFileInfo::from_db(id, path, title, artist, album, track, track_number, duration, mbid);
+      let info = MediaFileInfo { id, path, title, artist, album, track, track_number, duration, mbid };
       Ok(Some(info))
     })
   }
@@ -280,7 +280,7 @@ impl DatabaseConnection {
       };
 
       // If the value does not exist in the database, return 0
-      if rows.len() == 0 {
+      if rows.is_empty() {
         return Ok(None);
       }
 
@@ -293,7 +293,7 @@ impl DatabaseConnection {
 
   pub fn check_valid_recording_uuid(&self, uuid: &Uuid) -> impl Future<Item = bool, Error = io::Error> + Send {
     let db = self.pool.clone();
-    let uuid = uuid.clone();
+    let uuid = *uuid;
 
     self.thread_pool.spawn_fn(move || {
       let conn = db.get().map_err(|e| {
@@ -307,7 +307,7 @@ impl DatabaseConnection {
         WHERE "recording"."gid" = $1
       "#) {
         Ok(v) => v,
-        Err(err) => panic!("error preparing check_valid_recording_uuid statement: {:#?}", err),
+        Err(err) => return Err(io::Error::new(io::ErrorKind::Other, format!("error preparing check_valid_recording_uuid statement: {:#?}", err))),
       };
 
       let res = statement.query(&[
@@ -316,9 +316,7 @@ impl DatabaseConnection {
 
       let rows = match res {
         Ok(v) => v,
-        Err(err) => {
-          panic!("error checking valid recording uuid: {:?}", err);
-        },
+        Err(err) => return Err(io::Error::new(io::ErrorKind::Other, format!("error checking valid recording uuid: {:?}", err))),
       };
 
       let row = rows.get(0);
@@ -361,7 +359,6 @@ impl DatabaseConnection {
 
   pub fn add_acoustid_last_check(&self, library_id: i32, current_time: DateTime<Utc>) -> Box<Future<Item = u64, Error = io::Error> + Send> {
     let db = self.pool.clone();
-    let current_time = current_time.clone();
 
     let future = self.thread_pool.spawn_fn(move || {
       let conn = db.get().map_err(|e| {

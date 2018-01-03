@@ -47,7 +47,7 @@ fn print_file_info(path: &str) {
   }
 }
 
-fn print_fingerprint(api_key: &String, lookup: bool, path: &str) {
+fn print_fingerprint(api_key: &str, lookup: bool, path: &str) {
   let (duration, fingerprint) = fingerprint::get(path).expect("Error getting file's fingerprint");
 
   println!("{}", fingerprint);
@@ -65,7 +65,7 @@ fn print_fingerprint(api_key: &String, lookup: bool, path: &str) {
       .build(&core.handle());
     let client = Rc::new(client);
 
-    let future = AcoustId::lookup(api_key.clone(), duration, fingerprint, client, limiter_handle);
+    let future = AcoustId::lookup(api_key, duration, &fingerprint, &client, &limiter_handle);
 
     match core.run(future) {
       Ok(res) => {

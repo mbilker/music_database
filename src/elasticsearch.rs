@@ -20,13 +20,13 @@ pub struct ElasticSearch {
 }
 
 impl ElasticSearch {
-  pub fn new(pool: CpuPool, handle: Handle) -> Self {
+  pub fn new(pool: CpuPool, handle: &Handle) -> Self {
     let base_url = env::var("ELASTICSEARCH_URL").expect("ELASTICSEARCH_URL must be set");
 
     let client = AsyncClientBuilder::new()
       .serde_pool(pool)
       .base_url(base_url)
-      .build(&handle.clone())
+      .build(handle)
       .unwrap();
 
     Self {
@@ -40,7 +40,7 @@ impl ElasticSearch {
   // figure out this?)
   pub fn ensure_index_exists(&self) -> impl Future<Item = (), Error = ()> + 'static {
     // Create the index
-    fn create_index(client: AsyncClient) -> impl Future<Item = (), Error = ()> {
+    fn create_index(client: &AsyncClient) -> impl Future<Item = (), Error = ()> {
       info!("Elasticsearch index does not exist, creating index");
 
       client.index_create(INDEX_NAME.into())
@@ -78,12 +78,12 @@ impl ElasticSearch {
       })
       // TODO(mbilker): does the `and_then` get called if there is a `map_err`
       // before it?
-      .and_then(|exists| -> Box<Future<Item = (), Error = ()>> {
+      .and_then(move |exists| -> Box<Future<Item = (), Error = ()>> {
         // Only create the index on 404 and print out details for non-200
         // response codes
         match exists.status() {
           200 => Box::new(future::ok(())),
-          404 => Box::new(create_index(client)),
+          404 => Box::new(create_index(&client)),
             _ => Box::new(handle_other_response(exists)),
         }
       })

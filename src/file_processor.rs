@@ -30,9 +30,9 @@ pub struct FileProcessor {
 }
 
 impl FileProcessor {
-  pub fn new(acoustid: Arc<AcoustId>, conn: Arc<DatabaseConnection>) -> Self {
-    let acoustid = acoustid.clone();
-    let conn = conn.clone();
+  pub fn new(acoustid: &Arc<AcoustId>, conn: &Arc<DatabaseConnection>) -> Self {
+    let acoustid = Arc::clone(acoustid);
+    let conn = Arc::clone(conn);
 
     Self {
       acoustid,
@@ -41,8 +41,10 @@ impl FileProcessor {
   }
 
   pub fn call(self, info: MediaFileInfo) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
-    let acoustid = self.acoustid.clone();
-    let conn = self.conn.clone();
+    let acoustid = Arc::clone(&self.acoustid);
+    let conn = Arc::clone(&self.conn);
+
+    let path = info.path.clone();
 
     let work = WorkUnit {
       acoustid,
@@ -52,32 +54,34 @@ impl FileProcessor {
     };
 
     // Get the previous value from the database if it exists
-    let fetch_future = wrap_err!(self.conn.fetch_file(work.info.path.clone()));
+    let fetch_future = wrap_err!(self.conn.fetch_file(&path));
 
     let future = fetch_future.and_then(move |db_info| {
       match db_info {
-        Some(v) => Self::update_path_entry(work, v),
-           None => Self::insert_path_entry(work),
+        Some(v) => Self::update_path_entry(&work, v),
+           None => Self::insert_path_entry(&work),
       }
     });
 
     Box::new(future)
   }
 
-  fn insert_path_entry(work: WorkUnit) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
+  fn insert_path_entry(work: &WorkUnit) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
     info!("path: {}", work.info.path);
 
-    let conn1 = work.conn.clone();
-    let conn2 = work.conn.clone();
-    let acoustid = work.acoustid.clone();
+    let conn1 = Arc::clone(&work.conn);
+    let conn2 = Arc::clone(&work.conn);
+    let acoustid = Arc::clone(&work.acoustid);
 
-    let info = work.info.clone();
+    let info = Arc::clone(&work.info);
 
-    let add_future = wrap_err!(work.conn.insert_file(&work.info.clone()));
+    let add_future = wrap_err!(work.conn.insert_file(&Arc::clone(&work.info)));
 
     let future = add_future.and_then(move |_| {
+      let path = info.path.clone();
+
       let acoustid_future = acoustid.parse_file(info.path.clone());
-      let info_future = wrap_err!(conn1.fetch_file(info.path.clone())).and_then(|info| {
+      let info_future = wrap_err!(conn1.fetch_file(&path)).and_then(|info| {
         // If a database row is not returned after adding it, there is an issue and the
         // error is appropriate here
         match info {
@@ -102,7 +106,7 @@ impl FileProcessor {
     Box::new(future)
   }
 
-  fn update_path_entry(work: WorkUnit, db_info: MediaFileInfo) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
+  fn update_path_entry(work: &WorkUnit, db_info: MediaFileInfo) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
     let id = db_info.id;
 
     macro_rules! check_fields {
@@ -117,11 +121,11 @@ impl FileProcessor {
     let update_future: Box<Future<Item = MediaFileInfo, Error = ProcessorError> + Send> = if needs_update {
       info!("not equal, info: {:#?}, db_info: {:#?}", work.info, db_info);
 
-      let conn = work.conn.clone();
+      let conn = Arc::clone(&work.conn);
       let path = work.info.path.clone();
       Box::new(
         wrap_err!(work.conn.update_file(id, (*work.info).clone()))
-          .and_then(move |_| wrap_err!(conn.fetch_file(path)))
+          .and_then(move |_| wrap_err!(conn.fetch_file(&path)))
           .and_then(|info| Ok(info.unwrap()))
       )
     } else {
@@ -135,8 +139,8 @@ impl FileProcessor {
 
     debug!("path does not have associated mbid: {}", work.info.path);
 
-    let acoustid = work.acoustid.clone();
-    let conn = work.conn.clone();
+    let acoustid = Arc::clone(&work.acoustid);
+    let conn = Arc::clone(&work.conn);
 
     let last_check = wrap_err!(work.conn.get_acoustid_last_check(id));
     let joined = update_future.join(last_check);
@@ -144,7 +148,7 @@ impl FileProcessor {
     // Must use trait object or rust will not detect the correct boxing
     let future = joined.and_then(move |(db_info, last_check)| -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
       let now: DateTime<Utc> = Utc::now();
-      let difference = now.timestamp() - last_check.unwrap_or(Utc.timestamp(0, 0)).timestamp();
+      let difference = now.timestamp() - last_check.unwrap_or_else(|| Utc.timestamp(0, 0)).timestamp();
 
       // 2 weeks = 1,209,600 seconds
       if difference < 1_209_600 {
@@ -155,7 +159,7 @@ impl FileProcessor {
       info!("id: {}, path: {}", id, db_info.path);
 
       debug!("updating mbid (now: {} - last_check: {:?} = {})", now, last_check, difference);
-      let conn2 = conn.clone();
+      let conn2 = Arc::clone(&conn);
       let fetch_fingerprint = acoustid.parse_file(db_info.path.clone())
         .and_then(move |mbid| -> Box<Future<Item = (), Error = ProcessorError>> {
           match mbid {

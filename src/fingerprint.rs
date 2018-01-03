@@ -38,7 +38,7 @@ pub fn get(path: &str) -> Result<(f64, String), ProcessorError> {
   };
 
   let samplerate = decoder.rate();
-  let channels = decoder.channels() as i32;
+  let channels = i32::from(decoder.channels());
 
   // Check for empty channel layout and set to a default one for the number
   // of channels

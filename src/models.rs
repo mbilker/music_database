@@ -35,35 +35,11 @@ pub struct MediaFileInfoDocument {
 }
 
 impl MediaFileInfo {
-  pub fn from_db(
-    id: i32,
-    path: String,
-    title: Option<String>,
-    artist: Option<String>,
-    album: Option<String>,
-    track: Option<String>,
-    track_number: u32,
-    duration: u32,
-    mbid: Option<Uuid>
-  ) -> Self {
-    Self {
-      id: id,
-      path: path,
-      title: title,
-      artist: artist,
-      album: album,
-      track: track,
-      track_number: track_number,
-      duration: duration,
-      mbid: mbid
-    }
-  }
-
   pub fn read_file(path: &str) -> Option<Self> {
     let mut media_info: MediaInfo = MediaInfo::new();
 
     // Fail quickly if the file could not be opened
-    if let Err(_) = media_info.open(path) {
+    if media_info.open(path).is_err() {
       error!("could not open file: {}", path);
       return None;
     }
@@ -73,7 +49,7 @@ impl MediaFileInfo {
     // `get_with_default_option` throws a ZeroLengthError if there is no value
     // for the parameter
     let audio_streams = media_info.get_with_default_options("AudioCount");
-    if let Err(_) = audio_streams {
+    if audio_streams.is_err() {
       trace!("no audio streams");
       return None;
     }
@@ -93,18 +69,20 @@ impl MediaFileInfo {
     let extension = media_info.get_with_default_options("FileExtension");
     let ignore = match format_extension {
       Ok(ref format_extension) => match format_extension.as_ref() {
-        "ape mac" => true,
-        "m3u8" => true,
-        "mpls" => true,
-        "orig" => true,
+        "ape mac" |
+        "m3u8" |
+        "mpls" |
+        "orig" |
         "bak" => true,
+
         _ => false,
       },
       Err(_) => false,
     } || match extension {
       Ok(ref extension) => match extension.as_ref() {
-        "orig" => true,
+        "orig" |
         "bak" => true,
+
         _ => false,
       },
       Err(_) => false,
@@ -158,15 +136,15 @@ impl MediaFileInfo {
 
   pub fn to_document(&self) -> MediaFileInfoDocument {
     MediaFileInfoDocument {
-      id:		self.id.clone(),
-      path:		self.path.clone(),
-      title:		self.title.clone(),
-      artist:		self.artist.clone(),
-      album:		self.album.clone(),
-      track:		self.track.clone(),
-      track_number:	self.track_number as i32,
-      duration:		self.duration as i32,
-      mbid:		self.mbid.map(|x| x.to_string())
+      id:           self.id,
+      path:         self.path.clone(),
+      title:        self.title.clone(),
+      artist:       self.artist.clone(),
+      album:        self.album.clone(),
+      track:        self.track.clone(),
+      track_number: self.track_number as i32,
+      duration:     self.duration as i32,
+      mbid:         self.mbid.map(|x| x.to_string())
     }
   }
 }

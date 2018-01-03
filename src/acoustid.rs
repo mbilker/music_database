@@ -29,7 +29,7 @@ pub struct AcoustId {
 }
 
 impl AcoustId {
-  pub fn new(api_key: String, thread_pool: CpuPool, handle: Handle) -> Self {
+  pub fn new(api_key: String, thread_pool: CpuPool, handle: &Handle) -> Self {
     let mut limiter = ratelimit::Builder::new()
       .capacity(3)
       .quantum(3)
@@ -40,8 +40,8 @@ impl AcoustId {
     thread::spawn(move || limiter.run());
 
     let client = Client::configure()
-      .connector(HttpsConnector::new(4, &handle).unwrap())
-      .build(&handle);
+      .connector(HttpsConnector::new(4, handle).unwrap())
+      .build(handle);
 
     Self {
       api_key,
@@ -52,8 +52,8 @@ impl AcoustId {
     }
   }
 
-  fn handle_response(data: Chunk) -> Result<AcoustIdResult, ProcessorError> {
-    let v: AcoustIdResponse = serde_json::from_slice(&data).map_err(|e| {
+  fn handle_response(data: &Chunk) -> Result<AcoustIdResult, ProcessorError> {
+    let v: AcoustIdResponse = serde_json::from_slice(data).map_err(|e| {
       ProcessorError::from(e)
     })?;
     debug!("v: {:?}", v);
@@ -83,11 +83,11 @@ impl AcoustId {
   }
 
   pub fn lookup(
-    api_key: String,
+    api_key: &str,
     duration: f64,
-    fingerprint: String,
-    client: Rc<Client<HttpsConnector<HttpConnector>>>,
-    ratelimit: Rc<RefCell<ratelimit::Handle>>
+    fingerprint: &str,
+    client: &Rc<Client<HttpsConnector<HttpConnector>>>,
+    ratelimit: &Rc<RefCell<ratelimit::Handle>>
   ) -> impl Future<Item = AcoustIdResult, Error = ProcessorError> {
     let url = format!("{base}?format=json&client={apiKey}&duration={duration:.0}&fingerprint={fingerprint}&meta=recordings",
       base=LOOKUP_URL,
@@ -104,15 +104,15 @@ impl AcoustId {
       res.body().concat2().map_err(|e|
         ProcessorError::from(e)
       ).and_then(move |body|
-        Self::handle_response(body)
+        Self::handle_response(&body)
       )
     })
   }
 
   pub fn parse_file(&self, path: String) -> impl Future<Item = Option<Uuid>, Error = ProcessorError> {
     let api_key = self.api_key.clone();
-    let client = self.client.clone();
-    let ratelimit = self.ratelimit.clone();
+    let client = Rc::clone(&self.client);
+    let ratelimit = Rc::clone(&self.ratelimit);
 
     let path2 = path.clone();
 
@@ -121,7 +121,7 @@ impl AcoustId {
       // parsed like WAV files
       fingerprint::get(&path)
     }).and_then(move |(duration, fingerprint)| {
-      Self::lookup(api_key, duration, fingerprint, client, ratelimit)
+      Self::lookup(&api_key, duration, &fingerprint, &client, &ratelimit)
     }).and_then(|result| {
      if let Some(recordings) = result.recordings {
         let first = recordings.first().unwrap();
@@ -167,7 +167,7 @@ mod tests {
         }
       ]
     }"#;
-    
+
     let first_result = handle_response(json).unwrap();
     assert_eq!(first_result.id, "f2451269-9fec-4e82-aaf8-0bdf1f069ecf");
   }
