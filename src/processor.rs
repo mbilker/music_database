@@ -50,7 +50,9 @@ impl<'a> Processor<'a> {
 
     debug!("Database Connection: {:?}", conn);
 
-    core.run(search.ensure_index_exists()).unwrap();
+    let future = search.ensure_index_exists()
+      .map_err(|_| ProcessorError::NothingUseful);
+    try!(core.run(future));
 
     Ok(Self {
       paths: &config.paths,
