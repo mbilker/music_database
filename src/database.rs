@@ -423,6 +423,33 @@ impl DatabaseConnection {
     Box::new(future)
   }
 
+  pub fn delete_acoustid_last_check(&self, library_id: i32) -> impl Future<Item = u64, Error = io::Error> + Send {
+    let db = self.pool.clone();
+
+    self.thread_pool.spawn_fn(move || {
+      let conn = db.get().map_err(|e| {
+        io::Error::new(io::ErrorKind::Other, format!("timeout: {}", e))
+      })?;
+
+      let statement = match conn.prepare_cached(r#"
+        DELETE FROM acoustid_last_check
+        WHERE library_id = $1
+      "#) {
+        Ok(v) => v,
+        Err(err) => return Err(io::Error::new(io::ErrorKind::Other, format!("error preparing update_acoustid_last_check statement: {:#?}", err))),
+      };
+
+      let res = statement.execute(&[
+        &library_id,
+      ]);
+
+      match res {
+        Ok(v) => Ok(v),
+        Err(err) => Err(io::Error::new(io::ErrorKind::Other, format!("unexpected error with last_check delete: {:?}", err))),
+      }
+    })
+  }
+
   pub fn path_iter<F>(&self, mut cb: F) -> Result<(), io::Error>
     where F: FnMut(i32, String) -> ()
   {
