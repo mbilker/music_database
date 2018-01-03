@@ -92,6 +92,9 @@ fn main() {
     .subcommand(SubCommand::with_name("scan")
       .about("scan music library directories")
       .author("Matt Bilker <me@mbilker.us>"))
+    .subcommand(SubCommand::with_name("prune")
+      .about("prune database of non-existant files")
+      .author("Matt Bilker <me@mbilker.us>"))
     .subcommand(SubCommand::with_name("info")
       .about("show info about a single file")
       .author("Matt Bilker <me@mbilker.us>")
@@ -126,6 +129,13 @@ fn main() {
     let res = processor.scan_dirs();
     if let Err(err) = res {
       panic!("error scannning directories: {:#?}", err);
+    }
+  } else if let Some(_matches) = matches.subcommand_matches("prune") {
+    let mut processor = Processor::new(&config);
+
+    let res = processor.prune_db();
+    if let Err(err) = res {
+      panic!("error pruning database: {:#?}", err);
     }
   } else if let Some(matches) = matches.subcommand_matches("info") {
     let file_path = matches.value_of("path").unwrap();

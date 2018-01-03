@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::Arc;
 
 use num_cpus;
@@ -59,6 +60,35 @@ impl<'a> Processor<'a> {
       conn,
       search,
     }
+  }
+
+  pub fn prune_db(&mut self) -> Result<(), ProcessorError> {
+    let conn = self.conn.clone();
+    let remote = self.core.remote();
+
+    let future = self.conn.path_iter(move |id, path| {
+      let path = Path::new(&path);
+      if !path.exists() {
+        println!("id: {}, path: {:?}", id, path);
+
+        let conn2 = conn.clone();
+
+        let future = conn.delete_acoustid_last_check(id)
+          .and_then(move |_| conn2.delete_file(id))
+          .and_then(move |_| {
+            info!("id: {} deleted", id);
+            Ok(())
+          })
+          .map_err(move |e| {
+            error!("error deleting id = {}: {:#?}", id, e);
+          });
+
+        remote.spawn(move |_| future);
+      }
+    })
+    .map_err(|e| e.into());
+
+    self.core.run(future)
   }
 
   pub fn scan_dirs(&mut self) -> Result<Box<i32>, ProcessorError> {
