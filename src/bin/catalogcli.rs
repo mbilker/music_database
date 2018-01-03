@@ -121,7 +121,7 @@ fn main() {
   println!("Config: {:?}", config);
 
   if let Some(_matches) = matches.subcommand_matches("scan") {
-    let mut processor = Processor::new(&config).unwrap();
+    let mut processor = Processor::new(&config);
 
     let res = processor.scan_dirs();
     if let Err(err) = res {

@@ -29,16 +29,12 @@ pub struct Processor<'a> {
 }
 
 impl<'a> Processor<'a> {
-  pub fn new(config: &'a Config) -> Result<Self, ProcessorError> {
-    let api_key = match config.api_keys.get("acoustid") {
-      Some(v) => v,
-      None => return Err(ProcessorError::ApiKeyError),
-    };
-
-    let mut core = Core::new().unwrap();
+  pub fn new(config: &'a Config) -> Self {
+    let api_key = config.api_keys.get("acoustid").expect("Failed to get Acoustid API key");
 
     let cores = num_cpus::get();
 
+    let mut core = Core::new().unwrap();
     let thread_pool = CpuPoolBuilder::new()
       .pool_size(cores)
       .name_prefix("pool_thread")
@@ -50,11 +46,10 @@ impl<'a> Processor<'a> {
 
     debug!("Database Connection: {:?}", conn);
 
-    let future = search.ensure_index_exists()
-      .map_err(|_| ProcessorError::NothingUseful);
-    try!(core.run(future));
+    let future = search.ensure_index_exists();
+    core.run(future).expect("Failed to create Elasticsearch index");
 
-    Ok(Self {
+    Self {
       paths: &config.paths,
 
       core,
@@ -63,7 +58,7 @@ impl<'a> Processor<'a> {
       acoustid,
       conn,
       search,
-    })
+    }
   }
 
   pub fn scan_dirs(&mut self) -> Result<Box<i32>, ProcessorError> {
