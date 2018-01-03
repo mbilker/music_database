@@ -11,7 +11,7 @@ pub struct AcoustIdArtist {
   pub id: String,
   pub name: String,
 }
-    
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct AcoustIdRecording {
   pub duration: Option<i32>,
