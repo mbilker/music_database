@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use futures::{Future, Stream};
 use futures_cpupool::CpuPool;
+use futures_ratelimit::RatelimitFuture;
 use hyper::{Chunk, Client};
 use hyper::client::HttpConnector;
 use hyper_tls::HttpsConnector;
@@ -87,7 +88,7 @@ impl AcoustId {
     duration: f64,
     fingerprint: &str,
     client: &Rc<Client<HttpsConnector<HttpConnector>>>,
-    ratelimit: &Rc<RefCell<ratelimit::Handle>>
+    handle: &ratelimit::Handle
   ) -> impl Future<Item = AcoustIdResult, Error = ProcessorError> {
     let url = format!("{base}?format=json&client={apiKey}&duration={duration:.0}&fingerprint={fingerprint}&meta=recordings",
       base=LOOKUP_URL,
@@ -96,13 +97,14 @@ impl AcoustId {
       fingerprint=fingerprint
     ).parse().unwrap();
 
-    // Reduce scope of mutable borrow
-    {
-      ratelimit.borrow_mut().wait();
-    }
+    let client = Rc::clone(client);
 
-    client.get(url)
-      .map_err(ProcessorError::from)
+    RatelimitFuture::new(handle.clone())
+      .map_err(|_| ProcessorError::NothingUseful)
+      .and_then(move |_| {
+        client.get(url)
+          .map_err(ProcessorError::from)
+      })
       .and_then(|res| {
         res.body()
           .concat2()
@@ -114,7 +116,7 @@ impl AcoustId {
   pub fn parse_file(&self, path: String) -> impl Future<Item = Option<Uuid>, Error = ProcessorError> {
     let api_key = self.api_key.clone();
     let client = Rc::clone(&self.client);
-    let ratelimit = Rc::clone(&self.ratelimit);
+    let ratelimit = self.ratelimit.borrow().clone();
 
     let path2 = path.clone();
 

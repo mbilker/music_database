@@ -9,6 +9,7 @@ extern crate fallible_iterator;
 extern crate ffmpeg;
 extern crate futures;
 extern crate futures_cpupool;
+extern crate futures_ratelimit;
 extern crate hyper;
 extern crate hyper_tls;
 extern crate mediainfo;

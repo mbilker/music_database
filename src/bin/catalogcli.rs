@@ -12,7 +12,6 @@ extern crate log;
 
 extern crate music_card_catalog;
 
-use std::cell::RefCell;
 use std::rc::Rc;
 use std::thread;
 
@@ -56,7 +55,7 @@ fn print_fingerprint(api_key: &str, lookup: bool, path: &str) {
     let mut core = Core::new().unwrap();
 
     let mut limiter = ratelimit::Builder::new().frequency(1).build();
-    let limiter_handle = Rc::new(RefCell::new(limiter.make_handle()));
+    let limiter_handle = limiter.make_handle();
 
     thread::spawn(move || limiter.run());
 
