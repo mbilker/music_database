@@ -36,10 +36,10 @@ fn print_file_info(path: &str) {
 
   if let Some(info) = info {
     println!("Info for {}", path);
-    println!("Title: {}", info.title.unwrap_or_else(|| String::new()));
-    println!("Artist: {}", info.artist.unwrap_or_else(|| String::new()));
-    println!("Album: {}", info.album.unwrap_or_else(|| String::new()));
-    println!("Track: {}", info.track.unwrap_or_else(|| String::new()));
+    println!("Title: {}", info.title.unwrap_or_else(String::new));
+    println!("Artist: {}", info.artist.unwrap_or_else(String::new));
+    println!("Album: {}", info.album.unwrap_or_else(String::new));
+    println!("Track: {}", info.track.unwrap_or_else(String::new));
     println!("Track Number: {}", info.track_number);
     println!("Duration: {} ms", info.duration);
   } else {
