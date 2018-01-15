@@ -96,17 +96,19 @@ impl AcoustId {
       fingerprint=fingerprint
     ).parse().unwrap();
 
-    ratelimit.borrow_mut().wait();
+    // Reduce scope of mutable borrow
+    {
+      ratelimit.borrow_mut().wait();
+    }
 
-    client.get(url).map_err(|e|
-      ProcessorError::from(e)
-    ).and_then(|res| {
-      res.body().concat2().map_err(|e|
-        ProcessorError::from(e)
-      ).and_then(move |body|
-        Self::handle_response(&body)
-      )
-    })
+    client.get(url)
+      .map_err(ProcessorError::from)
+      .and_then(|res| {
+        res.body()
+          .concat2()
+          .map_err(ProcessorError::from)
+          .and_then(move |body| Self::handle_response(&body))
+      })
   }
 
   pub fn parse_file(&self, path: String) -> impl Future<Item = Option<Uuid>, Error = ProcessorError> {

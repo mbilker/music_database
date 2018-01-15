@@ -14,7 +14,7 @@ use basic_types::*;
 
 macro_rules! wrap_err {
   ($x:expr) => {
-    $x.map_err(|e| ProcessorError::from(e))
+    $x.map_err(ProcessorError::from)
   }
 }
 
