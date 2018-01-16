@@ -38,7 +38,10 @@ impl AcoustId {
       .build();
     let limiter_handle = limiter.make_handle();
 
-    thread::spawn(move || limiter.run());
+    thread::Builder::new()
+      .name("ratelimit".into())
+      .spawn(move || limiter.run())
+      .unwrap();
 
     let client = Client::configure()
       .connector(HttpsConnector::new(4, handle).unwrap())
