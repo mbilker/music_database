@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use models::MediaFileInfo;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct DatabaseConnection {
   pool: Pool<PostgresConnectionManager>,
   thread_pool: CpuPool,
@@ -53,7 +53,7 @@ impl DatabaseConnection {
         ) VALUES ($1, $2, $3, $4, $5, $6, $7)
       "#) {
         Ok(v) => v,
-        Err(err) => panic!("error preparing insert_file statement: {:#?}", err),
+        Err(err) => return Err(io::Error::new(io::ErrorKind::Other, format!("error preparing insert_file statement: {:#?}", err))),
       };
 
       let res = statement.execute(&[
