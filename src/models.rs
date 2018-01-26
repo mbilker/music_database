@@ -1,7 +1,24 @@
 use mediainfo::MediaInfo;
 use uuid::Uuid;
 
-#[derive(Clone, Debug)]
+use schema::library;
+
+#[derive(Insertable)]
+#[table_name="library"]
+pub struct NewMediaFileInfo {
+  pub path: String,
+
+  pub title: Option<String>,
+  pub artist: Option<String>,
+  pub album: Option<String>,
+  pub track: Option<String>,
+  pub track_number: u32,
+  pub duration: u32,
+
+  pub mbid: Option<Uuid>,
+}
+
+#[derive(Clone, Debug, Queryable)]
 pub struct MediaFileInfo {
   // This is the id from the database
   pub id: i32,

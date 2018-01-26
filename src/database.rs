@@ -2,19 +2,20 @@ use std::env;
 use std::io;
 
 use chrono::{DateTime, Utc};
+use diesel::{self, PgConnection};
+use diesel::r2d2::ConnectionManager;
 use fallible_iterator::FallibleIterator;
 use futures::Future;
 use futures_cpupool::CpuPool;
-use postgres::error::UNIQUE_VIOLATION;
 use r2d2::Pool;
-use r2d2_postgres::{TlsMode, PostgresConnectionManager};
 use uuid::Uuid;
 
-use models::MediaFileInfo;
+use diesel::prelude::*;
 
-#[derive(Debug)]
+use models::{MediaFileInfo, NewMediaFileInfo};
+
 pub struct DatabaseConnection {
-  pool: Pool<PostgresConnectionManager>,
+  pool: Pool<ConnectionManager<PgConnection>>,
   thread_pool: CpuPool,
 }
 
@@ -22,8 +23,8 @@ impl DatabaseConnection {
   pub fn new(thread_pool: CpuPool) -> Self {
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
-    let manager = PostgresConnectionManager::new(&*database_url, TlsMode::None).unwrap();
-    let pool = Pool::builder().build(manager).unwrap();
+    let manager = ConnectionManager::<PgConnection>::new(&*database_url);
+    let pool = Pool::builder().build(manager).expect("Failed to create pool");
 
     Self {
       pool,
@@ -31,123 +32,40 @@ impl DatabaseConnection {
     }
   }
 
-  pub fn insert_file(&self, info: &MediaFileInfo) -> impl Future<Item = (), Error = io::Error> + Send {
+  pub fn insert_file(&self, info: NewMediaFileInfo) -> impl Future<Item = MediaFileInfo, Error = io::Error> + Send {
+    use schema::library;
+
     let db = self.pool.clone();
-    let info = info.clone();
 
     self.thread_pool.spawn_fn(move || {
       let conn = db.get().map_err(|e| {
         io::Error::new(io::ErrorKind::Other, format!("timeout: {}", e))
       })?;
 
-      let statement = match conn.prepare_cached(r#"
-        INSERT INTO library (
-          title,
-          artist,
-          album,
-          track,
-          track_number,
-          duration,
-          path
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-      "#) {
-        Ok(v) => v,
-        Err(err) => return Err(io::Error::new(io::ErrorKind::Other, format!("error preparing insert_file statement: {:#?}", err))),
-      };
+      let info = diesel::insert_into(library::table)
+        .values(&info)
+        .get_result(&*conn)
+        .expect("Error saving new media file entry");
 
-      let res = statement.execute(&[
-        &info.title,
-        &info.artist,
-        &info.album,
-        &info.track,
-        &info.track_number,
-        &info.duration,
-        &info.path
-      ]);
-
-      if let Err(err) = res {
-        if let Some(code) = err.code() {
-          if code != &UNIQUE_VIOLATION {
-            info!("{}", info.path);
-            info!("- {:#?}", info);
-            error!("SQL insert error: {:#?}", err);
-
-            return Err(io::Error::new(io::ErrorKind::Other, "unexpected error with SQL insert".to_owned()));
-          }
-        } else {
-          info!("{}", info.path);
-          info!("- {:#?}", info);
-          error!("SQL insert error: {:#?}", err);
-
-          return Err(io::Error::new(io::ErrorKind::Other, "unexpected error with SQL insert".to_owned()));
-        }
-      }
-
-      Ok(())
+      Ok(info)
     })
   }
 
-  pub fn fetch_file(&self, path: &str) -> impl Future<Item = Option<MediaFileInfo>, Error = io::Error> + Send {
+  pub fn fetch_file(&self, file_path: &str) -> impl Future<Item = Option<MediaFileInfo>, Error = io::Error> + Send {
+    use schema::library::dsl::*;
+
     let db = self.pool.clone();
-    let path = path.to_string();
+    let file_path = file_path.to_string();
 
     self.thread_pool.spawn_fn(move || {
       let conn = db.get().map_err(|e| {
         io::Error::new(io::ErrorKind::Other, format!("timeout: {}", e))
       })?;
 
-      let statement = match conn.prepare_cached(r#"
-        SELECT
-          id,
-          title,
-          artist,
-          album,
-          track,
-          track_number,
-          duration,
-          path,
-          mbid
-        FROM library
-        WHERE path = $1
-      "#) {
-        Ok(v) => v,
-        Err(err) => {
-          return Err(io::Error::new(io::ErrorKind::Other, format!("error preparing fetch_file statement: {:#?}", err)));
-        },
-      };
+      let info = library.filter(path.eq(&file_path))
+        .first::<MediaFileInfo>(&*conn)
+        .expect("Error loading media file entry");
 
-      let res = statement.query(&[
-        &path
-      ]);
-
-      let rows = match res {
-        Ok(v) => v,
-        Err(err) => {
-          return Err(io::Error::new(io::ErrorKind::Other, format!("error retrieving row from database: {:#?}", err)));
-        },
-      };
-
-      if rows.is_empty() {
-        return Ok(None);
-      }
-
-      let row = rows.get(0);
-
-      let id = row.get(0);
-      let title = row.get(1);
-      let artist = row.get(2);
-      let album = row.get(3);
-      let track = row.get(4);
-      let track_number = row.get(5);
-      let duration = row.get(6);
-      let db_path: String = row.get(7);
-      let mbid = row.get(8);
-
-      if !str::eq(&path, &db_path) {
-        warn!("Path from database is not the same as argument, path: {}", path);
-      }
-
-      let info = MediaFileInfo { id, path, title, artist, album, track, track_number, duration, mbid };
       Ok(Some(info))
     })
   }

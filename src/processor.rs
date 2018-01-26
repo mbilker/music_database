@@ -40,8 +40,6 @@ impl<'a> Processor<'a> {
     let conn = Arc::new(DatabaseConnection::new(thread_pool.clone()));
     let search = Arc::new(ElasticSearch::new(thread_pool.clone(), &core.handle()));
 
-    debug!("Database Connection: {:?}", conn);
-
     let future = search.ensure_index_exists();
     core.run(future).expect("Failed to create Elasticsearch index");
 
