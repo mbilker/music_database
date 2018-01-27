@@ -57,9 +57,8 @@ impl AcoustId {
   }
 
   fn handle_response(data: &Chunk) -> Result<AcoustIdResult, ProcessorError> {
-    let v: AcoustIdResponse = serde_json::from_slice(data).map_err(|e| {
-      ProcessorError::from(e)
-    })?;
+    let v: AcoustIdResponse = serde_json::from_slice(data)
+      .map_err(ProcessorError::from)?;
     debug!("v: {:?}", v);
 
     let mut results = match v.results {
@@ -132,7 +131,7 @@ impl AcoustId {
         Self::lookup(&api_key, duration, &fingerprint, &client)
       })
       .and_then(|result| {
-       if let Some(recordings) = result.recordings {
+        if let Some(recordings) = result.recordings {
           let first = recordings.first().unwrap();
           return Ok(Some(first.id));
         }
