@@ -8,7 +8,7 @@ use chrono::prelude::*;
 
 use acoustid::AcoustId;
 use database::DatabaseConnection;
-use models::MediaFileInfo;
+use models::{MediaFileInfo, NewMediaFileInfo};
 
 use basic_types::*;
 
@@ -21,7 +21,7 @@ macro_rules! wrap_err {
 struct WorkUnit {
   acoustid: Arc<AcoustId>,
   conn: Arc<DatabaseConnection>,
-  info: Arc<MediaFileInfo>,
+  info: Arc<NewMediaFileInfo>,
 }
 
 pub struct FileProcessor {
@@ -40,7 +40,7 @@ impl FileProcessor {
     }
   }
 
-  pub fn call(self, info: MediaFileInfo) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
+  pub fn call(self, info: NewMediaFileInfo) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
     let acoustid = Arc::clone(&self.acoustid);
     let conn = Arc::clone(&self.conn);
 
@@ -54,7 +54,7 @@ impl FileProcessor {
     };
 
     // Get the previous value from the database if it exists
-    let fetch_future = wrap_err!(self.conn.fetch_file(&path));
+    let fetch_future = wrap_err!(self.conn.fetch_file(path));
 
     let future = fetch_future.and_then(move |db_info| {
       match db_info {
@@ -81,7 +81,7 @@ impl FileProcessor {
       let path = info.path.clone();
 
       let acoustid_future = acoustid.parse_file(info.path.clone());
-      let info_future = wrap_err!(conn1.fetch_file(&path)).and_then(|info| {
+      let info_future = wrap_err!(conn1.fetch_file(path)).and_then(|info| {
         // If a database row is not returned after adding it, there is an issue and the
         // error is appropriate here
         match info {
@@ -125,11 +125,11 @@ impl FileProcessor {
       let path = work.info.path.clone();
       Box::new(
         wrap_err!(work.conn.update_file(id, (*work.info).clone()))
-          .and_then(move |_| wrap_err!(conn.fetch_file(&path)))
+          .and_then(move |_| wrap_err!(conn.fetch_file(path)))
           .and_then(|info| Ok(info.unwrap()))
       )
     } else {
-      Box::new(future::ok(db_info))
+      Box::new(future::ok(db_info.clone()))
     };
 
     // Return early if the entry already has a MusicBrainz ID associated with it
@@ -142,7 +142,7 @@ impl FileProcessor {
     let acoustid = Arc::clone(&work.acoustid);
     let conn = Arc::clone(&work.conn);
 
-    let last_check = wrap_err!(work.conn.get_acoustid_last_check(id));
+    let last_check = wrap_err!(work.conn.get_acoustid_last_check(db_info));
     let joined = update_future.join(last_check);
 
     // Must use trait object or rust will not detect the correct boxing
@@ -162,6 +162,7 @@ impl FileProcessor {
       let conn2 = Arc::clone(&conn);
       let fetch_fingerprint = acoustid.parse_file(db_info.path.clone())
         .and_then(move |mbid| -> Box<Future<Item = (), Error = ProcessorError>> {
+          trace!("update_file_uuid({}, {:?})", id, mbid);
           match mbid {
             Some(mbid) => Box::new(wrap_err!(conn2.update_file_uuid(id, mbid))),
             None => Box::new(future::ok(())),

@@ -12,7 +12,7 @@ use database::DatabaseConnection;
 use elasticsearch::ElasticSearch;
 use file_scanner;
 use file_processor::FileProcessor;
-use models::MediaFileInfo;
+use models::NewMediaFileInfo;
 
 use basic_types::*;
 
@@ -102,7 +102,7 @@ impl<'a> Processor<'a> {
       let handler = stream::iter_ok(files).and_then(|file| {
         thread_pool.spawn_fn(move || {
           // A None value indicates a non-valid file instead of an error
-          Ok(MediaFileInfo::read_file(&file))
+          Ok(NewMediaFileInfo::read_file(&file))
         })
       }).filter_map(|info| {
         info

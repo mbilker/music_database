@@ -24,11 +24,11 @@ use music_card_catalog::acoustid::AcoustId;
 use music_card_catalog::elasticsearch::ElasticSearch;
 use music_card_catalog::fingerprint;
 use music_card_catalog::config::Config;
-use music_card_catalog::models::MediaFileInfo;
+use music_card_catalog::models::NewMediaFileInfo;
 use music_card_catalog::processor::Processor;
 
 fn print_file_info(path: &str) {
-  let info = MediaFileInfo::read_file(path);
+  let info = NewMediaFileInfo::read_file(path);
 
   debug!("{:#?}", info);
 

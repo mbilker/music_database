@@ -1,9 +1,11 @@
+use chrono::{DateTime, Utc};
+use diesel::sql_types::Integer;
 use mediainfo::MediaInfo;
 use uuid::Uuid;
 
-use schema::library;
+use schema::{acoustid_last_checks, library};
 
-#[derive(Insertable)]
+#[derive(Clone, Debug, Insertable, AsChangeset)]
 #[table_name="library"]
 pub struct NewMediaFileInfo {
   pub path: String,
@@ -18,9 +20,9 @@ pub struct NewMediaFileInfo {
   pub mbid: Option<Uuid>,
 }
 
-#[derive(Clone, Debug, Queryable)]
+#[derive(Clone, Debug, Queryable, Identifiable)]
+#[table_name="library"]
 pub struct MediaFileInfo {
-  // This is the id from the database
   pub id: i32,
 
   pub path: String,
@@ -33,6 +35,21 @@ pub struct MediaFileInfo {
   pub duration: u32,
 
   pub mbid: Option<Uuid>,
+}
+
+#[derive(Queryable, Identifiable, Associations)]
+#[table_name="acoustid_last_checks"]
+#[belongs_to(MediaFileInfo, foreign_key = "library_id")]
+pub struct AcoustIdLastCheck {
+  pub id: i32,
+  pub library_id: i32,
+  pub last_check: DateTime<Utc>,
+}
+
+#[derive(Debug, QueryableByName)]
+pub struct MusicBrainzRecording {
+  #[sql_type = "Integer"]
+  pub count: i32,
 }
 
 #[derive(Debug, ElasticType, Serialize)]
@@ -51,7 +68,7 @@ pub struct MediaFileInfoDocument {
   pub mbid: Option<String>,
 }
 
-impl MediaFileInfo {
+impl NewMediaFileInfo {
   pub fn read_file(path: &str) -> Option<Self> {
     let mut media_info: MediaInfo = MediaInfo::new();
 
@@ -117,9 +134,7 @@ impl MediaFileInfo {
     };
 
     // Store the most relevant details in a struct for easy access
-    let file_info = MediaFileInfo {
-      id:           -1,
-
+    let file_info = NewMediaFileInfo {
       path:         path.to_owned(),
 
       title:        title,
@@ -150,7 +165,9 @@ impl MediaFileInfo {
     self.track_number == 0 &&
     self.duration == 0
   }
+}
 
+impl MediaFileInfo {
   pub fn to_document(&self) -> MediaFileInfoDocument {
     MediaFileInfoDocument {
       id:           self.id,
