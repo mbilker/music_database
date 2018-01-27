@@ -1,1 +1,1 @@
-DROP TABLE acoustid_last_check;
+DROP TABLE acoustid_last_checks;

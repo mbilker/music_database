@@ -1,13 +1,13 @@
 CREATE TABLE library (
   id            SERIAL PRIMARY KEY,
-  mbid          UUID,
+  path          VARCHAR UNIQUE NOT NULL,
   title         VARCHAR,
   artist        VARCHAR,
   album         VARCHAR,
   track         VARCHAR,
   track_number  OID NOT NULL,
   duration      OID NOT NULL,
-  path          VARCHAR UNIQUE
+  mbid          UUID
 );
 
 CREATE INDEX library_mbid ON library (mbid);
