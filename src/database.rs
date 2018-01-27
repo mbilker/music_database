@@ -265,7 +265,7 @@ impl DatabaseConnection {
       let statement = match conn.prepare_cached(r#"
         SELECT
           last_check
-        FROM acoustid_last_check
+        FROM acoustid_last_checks
         WHERE library_id = $1
       "#) {
         Ok(v) => v,
@@ -366,7 +366,7 @@ impl DatabaseConnection {
       })?;
 
       let statement = match conn.prepare_cached(r#"
-        INSERT INTO acoustid_last_check (
+        INSERT INTO acoustid_last_checks (
           library_id,
           last_check
         ) VALUES ($1, $2)
@@ -398,7 +398,7 @@ impl DatabaseConnection {
       })?;
 
       let statement = match conn.prepare_cached(r#"
-        UPDATE acoustid_last_check
+        UPDATE acoustid_last_checks
         SET last_check = $2
         WHERE library_id = $1
       "#) {
@@ -429,7 +429,7 @@ impl DatabaseConnection {
       })?;
 
       let statement = match conn.prepare_cached(r#"
-        DELETE FROM acoustid_last_check
+        DELETE FROM acoustid_last_checks
         WHERE library_id = $1
       "#) {
         Ok(v) => v,
