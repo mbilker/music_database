@@ -74,7 +74,7 @@ fn print_fingerprint(api_key: &str, lookup: bool, path: &str) {
 // Main entrypoint for the program
 fn main() {
   // Initialize libraries
-  pretty_env_logger::init().unwrap();
+  pretty_env_logger::init();
   dotenv().ok();
   ffmpeg::init().unwrap();
 

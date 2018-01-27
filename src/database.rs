@@ -6,7 +6,7 @@ use fallible_iterator::FallibleIterator;
 use futures::Future;
 use futures_cpupool::CpuPool;
 use postgres::error::UNIQUE_VIOLATION;
-use r2d2::{Config, Pool};
+use r2d2::Pool;
 use r2d2_postgres::{TlsMode, PostgresConnectionManager};
 use uuid::Uuid;
 
@@ -22,9 +22,8 @@ impl DatabaseConnection {
   pub fn new(thread_pool: CpuPool) -> Self {
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
-    let config = Config::default();
     let manager = PostgresConnectionManager::new(&*database_url, TlsMode::None).unwrap();
-    let pool = Pool::new(config, manager).unwrap();
+    let pool = Pool::builder().build(manager).unwrap();
 
     Self {
       pool,

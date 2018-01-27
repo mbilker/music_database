@@ -1,8 +1,6 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use num_cpus;
-
 use futures::{Future, Stream};
 use futures::stream;
 use futures_cpupool::{Builder as CpuPoolBuilder, CpuPool};
@@ -33,11 +31,8 @@ impl<'a> Processor<'a> {
   pub fn new(config: &'a Config) -> Self {
     let api_key = config.api_keys.get("acoustid").expect("Failed to get Acoustid API key");
 
-    let cores = num_cpus::get();
-
     let mut core = Core::new().unwrap();
     let thread_pool = CpuPoolBuilder::new()
-      .pool_size(cores)
       .name_prefix("pool_thread")
       .create();
 

@@ -13,7 +13,6 @@ extern crate futures_ratelimit;
 extern crate hyper;
 extern crate hyper_tls;
 extern crate mediainfo;
-extern crate num_cpus;
 extern crate postgres;
 extern crate r2d2;
 extern crate r2d2_postgres;
