@@ -1,4 +1,5 @@
 #![feature(conservative_impl_trait)]
+#![recursion_limit="128"]
 
 extern crate chromaprint;
 extern crate chrono;
