@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use futures::{Future, Stream};
 use futures_cpupool::CpuPool;
-use futures_ratelimit::RatelimitFuture;
+//use futures_ratelimit::RatelimitFuture;
 use hyper::{Chunk, Client};
 use hyper::client::HttpConnector;
 use hyper_tls::HttpsConnector;
@@ -113,21 +113,20 @@ impl AcoustId {
   pub fn parse_file(&self, path: String) -> impl Future<Item = Option<Uuid>, Error = ProcessorError> {
     let api_key = self.api_key.clone();
     let client = Rc::clone(&self.client);
-    let ratelimit = self.ratelimit.borrow().clone();
+    let mut ratelimit = self.ratelimit.borrow().clone();
 
     let path2 = path.clone();
 
     let fingerprint = self.thread_pool.spawn_fn(move || {
+      ratelimit.wait();
+
       // Eat up fingerprinting errors, I mostly see them when a file is not easily
       // parsed like WAV files
       fingerprint::get(&path)
     });
 
-    let limiter = RatelimitFuture::new(ratelimit)
-      .map_err(|_| ProcessorError::NothingUseful);
-
-    fingerprint.join(limiter)
-      .and_then(move |((duration, fingerprint), _)| {
+    fingerprint
+      .and_then(move |(duration, fingerprint)| {
         Self::lookup(&api_key, duration, &fingerprint, &client)
       })
       .and_then(|result| {

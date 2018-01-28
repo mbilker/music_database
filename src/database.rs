@@ -50,7 +50,7 @@ impl DatabaseConnection {
 
       let info = diesel::insert_into(library::table)
         .values(&info)
-        .get_result(&*conn)
+        .get_result(&conn)
         .expect("Error saving new media file entry");
 
       Ok(info)
