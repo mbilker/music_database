@@ -121,12 +121,8 @@ impl FileProcessor {
     let update_future: Box<Future<Item = MediaFileInfo, Error = ProcessorError> + Send> = if needs_update {
       info!("not equal, info: {:#?}, db_info: {:#?}", work.info, db_info);
 
-      let conn = Arc::clone(&work.conn);
-      let path = work.info.path.clone();
       Box::new(
         wrap_err!(work.conn.update_file(id, (*work.info).clone()))
-          .and_then(move |_| wrap_err!(conn.fetch_file(path)))
-          .and_then(|info| Ok(info.unwrap()))
       )
     } else {
       Box::new(future::ok(db_info.clone()))
