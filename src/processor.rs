@@ -1,5 +1,6 @@
 use std::path::Path;
-use std::sync::Arc;
+use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use futures::{Future, Stream};
 use futures::{future, stream};
@@ -57,7 +58,9 @@ impl<'a> Processor<'a> {
 
   pub fn prune_db(&mut self) -> Result<(), ProcessorError> {
     let conn = Arc::clone(&self.conn);
-    let remote = self.core.remote();
+    let futures = Rc::new(Mutex::new(Vec::new()));
+
+    let futures2 = Rc::clone(&futures);
 
     let cb = move |id, path| {
       let path = Path::new(&path);
@@ -74,15 +77,18 @@ impl<'a> Processor<'a> {
           })
           .map_err(move |e| {
             error!("error deleting id = {}: {:#?}", id, e);
+            ProcessorError::NothingUseful
           });
 
-        remote.spawn(move |_| future);
+        futures2.lock().unwrap().push(future);
       }
     };
 
-    let conn = Arc::clone(&self.conn);
-    let future = future::lazy(|| conn.path_iter(cb));
-    try!(self.core.run(future));
+    try!(self.conn.path_iter(cb));
+
+    let mut futures = futures.lock().unwrap();
+    let futures: Vec<_> = futures.drain(..).collect();
+    try!(self.core.run(future::join_all(futures)));
 
     Ok(())
   }

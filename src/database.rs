@@ -266,7 +266,7 @@ impl DatabaseConnection {
   }
 
   pub fn path_iter<F: 'static>(&self, cb: F) -> Result<(), io::Error>
-    where F: Send + Fn(i32, String) -> ()
+    where F: Fn(i32, String) -> ()
   {
     let database_url = get_database_url();
     let conn = try!(Connection::connect(&*database_url, TlsMode::None));
