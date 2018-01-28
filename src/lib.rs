@@ -20,7 +20,6 @@ extern crate ratelimit;
 extern crate serde;
 extern crate serde_yaml;
 extern crate tokio_core;
-extern crate tokio_service;
 extern crate uuid;
 extern crate walkdir;
 
