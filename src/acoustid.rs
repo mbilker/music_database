@@ -144,6 +144,10 @@ impl AcoustId {
           Ok(None)
         },
         ProcessorError::NoFingerprintMatch => Ok(None),
+        ProcessorError::FFmpegError(e) => {
+          error!("path: {}, ffmpeg error: {}", path2, e);
+          Ok(None)
+        },
         _ => Err(e),
       })
   }
