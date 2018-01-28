@@ -129,11 +129,12 @@ impl FileProcessor {
     };
 
     // Return early if the entry already has a MusicBrainz ID associated with it
-    if work.info.mbid != None {
+    if let Some(mbid) = db_info.mbid {
+      debug!("id: {}, path: {}, associated mbid: {:?}", db_info.id, db_info.path, mbid);
       return update_future;
     }
 
-    debug!("path does not have associated mbid: {}", work.info.path);
+    debug!("id: {}, path: {}, no associated mbid", db_info.id, db_info.path);
 
     let acoustid = Arc::clone(&work.acoustid);
     let conn = Arc::clone(&work.conn);
@@ -143,16 +144,18 @@ impl FileProcessor {
 
     // Must use trait object or rust will not detect the correct boxing
     let future = joined.and_then(move |(db_info, last_check)| -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
+      let id = db_info.id;
+
       let now: DateTime<Utc> = Utc::now();
       let difference = now.timestamp() - last_check.unwrap_or_else(|| Utc.timestamp(0, 0)).timestamp();
 
       // 2 weeks = 1,209,600 seconds
       if difference < 1_209_600 {
-        debug!("id: {}, last check within 2 weeks, not re-checking", id);
+        debug!("id: {}, path: {}, last check within 2 weeks, not re-checking", id, db_info.path);
         return Box::new(future::ok(db_info));
       }
 
-      info!("id: {}, path: {}", id, db_info.path);
+      info!("id: {}, path: {}, checking for mbid match", id, db_info.path);
 
       debug!("updating mbid (now: {} - last_check: {:?} = {})", now, last_check, difference);
       let conn2 = Arc::clone(&conn);

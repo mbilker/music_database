@@ -16,8 +16,6 @@ pub struct NewMediaFileInfo {
   pub track: Option<String>,
   pub track_number: u32,
   pub duration: u32,
-
-  pub mbid: Option<Uuid>,
 }
 
 #[derive(Clone, Debug, Queryable, Identifiable)]
@@ -143,8 +141,6 @@ impl NewMediaFileInfo {
       track:        media_info.get_track_name().ok(),
       track_number: media_info.get_track_number().unwrap_or(0),
       duration:     duration,
-
-      mbid:         None,
     };
 
     media_info.close();
