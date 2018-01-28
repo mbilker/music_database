@@ -160,7 +160,10 @@ impl FileProcessor {
         .and_then(move |mbid| -> Box<Future<Item = (), Error = ProcessorError>> {
           trace!("update_file_uuid({}, {:?})", id, mbid);
           match mbid {
-            Some(mbid) => Box::new(wrap_err!(conn2.update_file_uuid(id, mbid))),
+            Some(mbid) => {
+              debug!("id: {}, new mbid: {}", id, mbid);
+              Box::new(wrap_err!(conn2.update_file_uuid(id, mbid)))
+            },
             None => Box::new(future::ok(())),
           }
         });
@@ -172,7 +175,6 @@ impl FileProcessor {
 
       let future = last_check
         .join(fetch_fingerprint)
-        .inspect(|&(arg1, _)| debug!("last_check add/update: {:?}", arg1))
         .and_then(|(_, _)| Ok(db_info));
 
       Box::new(future)
