@@ -90,8 +90,7 @@ impl AcoustId {
     api_key: &str,
     duration: f64,
     fingerprint: &str,
-    client: &Rc<Client<HttpsConnector<HttpConnector>>>,
-    handle: &ratelimit::Handle
+    client: &Rc<Client<HttpsConnector<HttpConnector>>>
   ) -> impl Future<Item = AcoustIdResult, Error = ProcessorError> {
     let url = format!("{base}?format=json&client={apiKey}&duration={duration:.0}&fingerprint={fingerprint}&meta=recordings",
       base=LOOKUP_URL,
@@ -102,12 +101,8 @@ impl AcoustId {
 
     let client = Rc::clone(client);
 
-    RatelimitFuture::new(handle.clone())
-      .map_err(|_| ProcessorError::NothingUseful)
-      .and_then(move |_| {
-        client.get(url)
-          .map_err(ProcessorError::from)
-      })
+    client.get(url)
+      .map_err(ProcessorError::from)
       .and_then(|res| {
         res.body()
           .concat2()
@@ -123,27 +118,35 @@ impl AcoustId {
 
     let path2 = path.clone();
 
-    self.thread_pool.spawn_fn(move || {
+    let fingerprint = self.thread_pool.spawn_fn(move || {
       // Eat up fingerprinting errors, I mostly see them when a file is not easily
       // parsed like WAV files
       fingerprint::get(&path)
-    }).and_then(move |(duration, fingerprint)| {
-      Self::lookup(&api_key, duration, &fingerprint, &client, &ratelimit)
-    }).and_then(|result| {
-     if let Some(recordings) = result.recordings {
-        let first = recordings.first().unwrap();
-        return Ok(Some(first.id));
-      }
+    });
 
-      Ok(None)
-    }).or_else(move |e| match e {
-      ProcessorError::NoAudioStream => {
-        error!("path: {}, weird case with no audio stream during fingerprinting (bad extension?)", path2);
+    let limiter = RatelimitFuture::new(ratelimit)
+      .map_err(|_| ProcessorError::NothingUseful);
+
+    fingerprint.join(limiter)
+      .and_then(move |((duration, fingerprint), _)| {
+        Self::lookup(&api_key, duration, &fingerprint, &client)
+      })
+      .and_then(|result| {
+       if let Some(recordings) = result.recordings {
+          let first = recordings.first().unwrap();
+          return Ok(Some(first.id));
+        }
+
         Ok(None)
-      },
-      ProcessorError::NoFingerprintMatch => Ok(None),
-      _ => Err(e),
-    })
+      })
+      .or_else(move |e| match e {
+        ProcessorError::NoAudioStream => {
+          error!("path: {}, weird case with no audio stream during fingerprinting (bad extension?)", path2);
+          Ok(None)
+        },
+        ProcessorError::NoFingerprintMatch => Ok(None),
+        _ => Err(e),
+      })
   }
 }
 

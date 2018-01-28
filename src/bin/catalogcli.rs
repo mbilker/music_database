@@ -13,7 +13,6 @@ extern crate log;
 extern crate music_card_catalog;
 
 use std::rc::Rc;
-use std::thread;
 
 use clap::{App, Arg, SubCommand};
 use dotenv::dotenv;
@@ -54,17 +53,12 @@ fn print_fingerprint(api_key: &str, lookup: bool, path: &str) {
   if lookup {
     let mut core = Core::new().unwrap();
 
-    let mut limiter = ratelimit::Builder::new().frequency(1).build();
-    let limiter_handle = limiter.make_handle();
-
-    thread::spawn(move || limiter.run());
-
     let client = Client::configure()
       .connector(HttpsConnector::new(1, &core.handle()).unwrap())
       .build(&core.handle());
     let client = Rc::new(client);
 
-    let future = AcoustId::lookup(api_key, duration, &fingerprint, &client, &limiter_handle);
+    let future = AcoustId::lookup(api_key, duration, &fingerprint, &client);
 
     match core.run(future) {
       Ok(res) => {
