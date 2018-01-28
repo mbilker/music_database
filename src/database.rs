@@ -8,12 +8,17 @@ use diesel::r2d2::ConnectionManager;
 use fallible_iterator::FallibleIterator;
 use futures::Future;
 use futures_cpupool::CpuPool;
+use postgres::{Connection, TlsMode};
 use r2d2::Pool;
 use uuid::Uuid;
 
 use diesel::prelude::*;
 
 use models::{AcoustIdLastCheck, MediaFileInfo, MusicBrainzRecording, NewMediaFileInfo};
+
+fn get_database_url() -> String {
+  env::var("DATABASE_URL").expect("DATABASE_URL must be set")
+}
 
 pub struct DatabaseConnection {
   pool: Pool<ConnectionManager<PgConnection>>,
@@ -22,8 +27,7 @@ pub struct DatabaseConnection {
 
 impl DatabaseConnection {
   pub fn new(thread_pool: CpuPool) -> Self {
-    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-
+    let database_url = get_database_url();
     let manager = ConnectionManager::<PgConnection>::new(&*database_url);
     let pool = Pool::builder().build(manager).expect("Failed to create pool");
 
@@ -261,35 +265,26 @@ impl DatabaseConnection {
     })
   }
 
-  pub fn path_iter<F: 'static>(&self, cb: F) -> impl Future<Item = (), Error = io::Error> + Send
+  pub fn path_iter<F: 'static>(&self, cb: F) -> Result<(), io::Error>
     where F: Send + Fn(i32, String) -> ()
   {
-    let db = self.pool.clone();
+    let database_url = get_database_url();
+    let conn = try!(Connection::connect(&*database_url, TlsMode::None));
+    let stmt = match conn.prepare("SELECT id, path FROM library") {
+      Ok(v) => v,
+      Err(err) => return Err(io::Error::new(io::ErrorKind::Other, format!("error preparing path_iter statement: {:#?}", err))),
+    };
 
-    self.thread_pool.spawn_fn(move || {
-/*
-      let conn = db.get().map_err(|e| {
-        io::Error::new(io::ErrorKind::Other, format!("timeout: {}", e))
-      })?;
+    let trans = try!(conn.transaction());
+    let mut rows = try!(stmt.lazy_query(&trans, &[], 100));
 
-      let stmt = match conn.prepare_cached("SELECT id, path FROM library") {
-        Ok(v) => v,
-        Err(err) => return Err(io::Error::new(io::ErrorKind::Other, format!("error preparing path_iter statement: {:#?}", err))),
-      };
+    while let Some(row) = rows.next()? {
+      let id: i32 = row.get(0);
+      let path: String = row.get(1);
 
-      let trans = conn.transaction().unwrap();
-      let mut rows = stmt.lazy_query(&trans, &[], 100).unwrap();
+      cb(id, path);
+    }
 
-      while let Some(row) = rows.next().unwrap() {
-        let id: i32 = row.get(0);
-        let path: String = row.get(1);
-
-        cb(id, path);
-      }
-
-      Ok(())
-*/
-      Err(io::Error::new(io::ErrorKind::Other, "not implemented"))
-    })
+    Ok(())
   }
 }
