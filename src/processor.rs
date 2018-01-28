@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use futures::{Future, Stream};
-use futures::stream;
+use futures::{future, stream};
 use futures_cpupool::{Builder as CpuPoolBuilder, CpuPool};
 use tokio_core::reactor::Core;
 
@@ -59,7 +59,7 @@ impl<'a> Processor<'a> {
     let conn = Arc::clone(&self.conn);
     let remote = self.core.remote();
 
-    let future = self.conn.path_iter(move |id, path| {
+    let cb = move |id, path| {
       let path = Path::new(&path);
       if !path.exists() {
         println!("id: {}, path: {:?}", id, path);
@@ -78,10 +78,13 @@ impl<'a> Processor<'a> {
 
         remote.spawn(move |_| future);
       }
-    })
-    .map_err(|e| e.into());
+    };
 
-    self.core.run(future)
+    let conn = Arc::clone(&self.conn);
+    let future = future::lazy(|| conn.path_iter(cb));
+    try!(self.core.run(future));
+
+    Ok(())
   }
 
   pub fn scan_dirs(&mut self) -> Result<Box<i32>, ProcessorError> {
