@@ -5,7 +5,7 @@ A Rust program to manage a Postgres database and Elasticsearch instance of my mu
 ## Setup
 
  - `.env`
-   - Add `DATABASE_URL` with a standard PostgresDB connection string according to [Section 31.1.1.](https://www.postgresql.org/docs/9.3/static/libpq-connect.html#LIBPQ-CONNSTRING).
+   - Add `DATABASE_URL` with a standard PostgresDB connection string according to [Section 31.1.1](https://www.postgresql.org/docs/9.3/static/libpq-connect.html#LIBPQ-CONNSTRING).
    - Add `ELASTICSEARCH_URL` with the url to the Elasticsearch instance (like `http://example.com:9200`).
  - `config.yaml`
    - Copy `config.yaml.example` to `config.yaml`
