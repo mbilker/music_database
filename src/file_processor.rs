@@ -18,12 +18,6 @@ macro_rules! wrap_err {
   }
 }
 
-struct WorkUnit {
-  acoustid: Arc<AcoustId>,
-  conn: Arc<DatabaseConnection>,
-  info: Arc<NewMediaFileInfo>,
-}
-
 pub struct FileProcessor {
   acoustid: Arc<AcoustId>,
   conn: Arc<DatabaseConnection>,
@@ -41,60 +35,43 @@ impl FileProcessor {
   }
 
   pub fn call(self, info: NewMediaFileInfo) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
-    let acoustid = Arc::clone(&self.acoustid);
-    let conn = Arc::clone(&self.conn);
-
     let path = info.path.clone();
-
-    let work = WorkUnit {
-      acoustid,
-      conn,
-
-      info: Arc::new(info),
-    };
 
     // Get the previous value from the database if it exists
     let fetch_future = wrap_err!(self.conn.fetch_file(path));
 
     let future = fetch_future.and_then(move |db_info| {
       match db_info {
-        Some(v) => Self::update_path_entry(&work, v),
-           None => Self::insert_path_entry(&work),
+        Some(v) => self.update_path_entry(info, v),
+           None => self.insert_path_entry(info),
       }
     });
 
     Box::new(future)
   }
 
-  fn insert_path_entry(work: &WorkUnit) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
-    info!("path: {}", work.info.path);
+  fn insert_path_entry(self, info: NewMediaFileInfo) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
+    info!("path: {}", info.path);
 
-    let conn1 = Arc::clone(&work.conn);
-    let conn2 = Arc::clone(&work.conn);
-    let acoustid = Arc::clone(&work.acoustid);
+    let conn = Arc::clone(&self.conn);
 
-    let info = Arc::clone(&work.info);
-
-    let add_future = wrap_err!(work.conn.insert_file(&Arc::clone(&work.info)));
+    let add_future = wrap_err!(self.conn.insert_file(&info));
 
     let future = add_future.and_then(move |_| {
       let path = info.path.clone();
 
-      let acoustid_future = acoustid.parse_file(info.path.clone());
-      let info_future = wrap_err!(conn1.fetch_file(path)).and_then(|info| {
+      let acoustid_future = self.acoustid.parse_file(info.path.clone());
+      let info_future = wrap_err!(self.conn.fetch_file(path)).and_then(|info| {
         // If a database row is not returned after adding it, there is an issue and the
         // error is appropriate here
-        match info {
-          Some(v) => Ok(v),
-             None => Err(ProcessorError::NothingUseful),
-        }
+        info.ok_or(ProcessorError::NothingUseful)
       });
 
       acoustid_future.join(info_future)
     }).and_then(move |(mbid, info)| {
-      let last_check = conn2.add_acoustid_last_check(info.id, Utc::now());
+      let last_check = conn.add_acoustid_last_check(info.id, Utc::now());
       let uuid: Box<Future<Item = (), Error = io::Error>> = match mbid {
-        Some(mbid) => Box::new(conn2.update_file_uuid(info.id, mbid)),
+        Some(mbid) => Box::new(conn.update_file_uuid(info.id, mbid)),
         None => Box::new(future::ok(())),
       };
 
@@ -106,12 +83,12 @@ impl FileProcessor {
     Box::new(future)
   }
 
-  fn update_path_entry(work: &WorkUnit, db_info: MediaFileInfo) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
+  fn update_path_entry(self, info: NewMediaFileInfo, db_info: MediaFileInfo) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
     let id = db_info.id;
 
     macro_rules! check_fields {
       ( $($x:ident),* ) => {
-        $((work.info.$x != db_info.$x) || )* false
+        $((info.$x != db_info.$x) || )* false
       }
     }
 
@@ -119,10 +96,10 @@ impl FileProcessor {
     // if the database entry differs from the read file metadata
     let needs_update = check_fields!(title, artist, album, track, track_number, duration);
     let update_future: Box<Future<Item = MediaFileInfo, Error = ProcessorError> + Send> = if needs_update {
-      info!("not equal, info: {:#?}, db_info: {:#?}", work.info, db_info);
+      info!("not equal, info: {:#?}, db_info: {:#?}", info, db_info);
 
       Box::new(
-        wrap_err!(work.conn.update_file(id, (*work.info).clone()))
+        wrap_err!(self.conn.update_file(id, info.clone()))
       )
     } else {
       Box::new(future::ok(db_info.clone()))
@@ -136,10 +113,9 @@ impl FileProcessor {
 
     debug!("id: {}, path: {}, no associated mbid", db_info.id, db_info.path);
 
-    let acoustid = Arc::clone(&work.acoustid);
-    let conn = Arc::clone(&work.conn);
+    let acoustid = Arc::clone(&self.acoustid);
 
-    let last_check = wrap_err!(work.conn.get_acoustid_last_check(db_info));
+    let last_check = wrap_err!(self.conn.get_acoustid_last_check(db_info));
     let joined = update_future.join(last_check);
 
     // Must use trait object or rust will not detect the correct boxing
@@ -158,22 +134,22 @@ impl FileProcessor {
       info!("id: {}, path: {}, checking for mbid match", id, db_info.path);
 
       debug!("updating mbid (now: {} - last_check: {:?} = {})", now, last_check, difference);
-      let conn2 = Arc::clone(&conn);
+      let conn = Arc::clone(&self.conn);
       let fetch_fingerprint = acoustid.parse_file(db_info.path.clone())
         .and_then(move |mbid| -> Box<Future<Item = (), Error = ProcessorError>> {
           trace!("update_file_uuid({}, {:?})", id, mbid);
           match mbid {
             Some(mbid) => {
               debug!("id: {}, new mbid: {}", id, mbid);
-              Box::new(wrap_err!(conn2.update_file_uuid(id, mbid)))
+              Box::new(wrap_err!(conn.update_file_uuid(id, mbid)))
             },
             None => Box::new(future::ok(())),
           }
         });
 
       let last_check = wrap_err!(match last_check {
-        Some(_) => conn.update_acoustid_last_check(id, now),
-           None => conn.add_acoustid_last_check(id, now),
+        Some(_) => self.conn.update_acoustid_last_check(id, now),
+           None => self.conn.add_acoustid_last_check(id, now),
       });
 
       let future = last_check
