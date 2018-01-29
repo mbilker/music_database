@@ -1,12 +1,16 @@
 # Music Catalog
 
-A Rust program to manage a Postgres database of my music collection.
+A Rust program to manage a Postgres database and Elasticsearch instance of my music collection.
 
 ## Setup
 
- - Copy `config.yaml.example` to `config.yaml`
- - Obtain an AcoustID API key from https://acoustid.org, and add it to `config.yaml` under `api_keys.acoustid`
- - Add the paths to your media files to the `paths` list in `config.yaml`
+ - `.env`
+   - Add `DATABASE_URL` with a standard PostgresDB connection string according to [Section 31.1.1.](https://www.postgresql.org/docs/9.3/static/libpq-connect.html#LIBPQ-CONNSTRING).
+   - Add `ELASTICSEARCH_URL` with the url to the Elasticsearch instance (like `http://example.com:9200`).
+ - `config.yaml`
+   - Copy `config.yaml.example` to `config.yaml`
+   - Obtain an AcoustID API key from https://acoustid.org, and add it under `api_keys.acoustid`
+   - Add the paths to your media files to the `paths` list
 
 ## Usage
 
