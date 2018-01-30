@@ -1,6 +1,9 @@
 #![feature(conservative_impl_trait)]
 #![recursion_limit="128"]
 
+#![cfg_attr(test, feature(plugin))]
+#![cfg_attr(test, plugin(clippy))]
+
 extern crate chromaprint;
 extern crate chrono;
 extern crate crossbeam;
