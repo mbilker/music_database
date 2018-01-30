@@ -7,7 +7,7 @@ use std::time::Duration;
 use futures::{Future, Stream};
 use futures_cpupool::CpuPool;
 //use futures_ratelimit::RatelimitFuture;
-use hyper::{Chunk, Client};
+use hyper::Client;
 use hyper::client::HttpConnector;
 use hyper_tls::HttpsConnector;
 use ratelimit;
@@ -56,7 +56,7 @@ impl AcoustId {
     }
   }
 
-  fn handle_response(data: &Chunk) -> Result<AcoustIdResult, ProcessorError> {
+  fn handle_response(data: &[u8]) -> Result<AcoustIdResult, ProcessorError> {
     let v: AcoustIdResponse = serde_json::from_slice(data)
       .map_err(ProcessorError::from)?;
     debug!("v: {:?}", v);
@@ -170,7 +170,7 @@ mod tests {
       ]
     }"#;
 
-    let first_result = handle_response(json).unwrap();
+    let first_result = AcoustId::handle_response(json.as_bytes()).unwrap();
     assert_eq!(first_result.id, "f2451269-9fec-4e82-aaf8-0bdf1f069ecf");
   }
 }
