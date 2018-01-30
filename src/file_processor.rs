@@ -42,25 +42,24 @@ impl FileProcessor {
 
     let future = fetch_future.and_then(move |db_info| {
       match db_info {
-        Some(v) => self.update_path_entry(info, v),
-           None => self.insert_path_entry(info),
+        Some(v) => self.update_path_entry(&info, v),
+           None => self.insert_path_entry(&info),
       }
     });
 
     Box::new(future)
   }
 
-  fn insert_path_entry(self, info: NewMediaFileInfo) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
+  fn insert_path_entry(self, info: &NewMediaFileInfo) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
     info!("path: {}", info.path);
 
+    let path = info.path.clone();
     let conn = Arc::clone(&self.conn);
 
-    let add_future = wrap_err!(self.conn.insert_file(&info));
+    let add_future = wrap_err!(self.conn.insert_file(info));
 
     let future = add_future.and_then(move |_| {
-      let path = info.path.clone();
-
-      let acoustid_future = self.acoustid.parse_file(info.path.clone());
+      let acoustid_future = self.acoustid.parse_file(&path);
       let info_future = wrap_err!(self.conn.fetch_file(path)).and_then(|info| {
         // If a database row is not returned after adding it, there is an issue and the
         // error is appropriate here
@@ -83,7 +82,7 @@ impl FileProcessor {
     Box::new(future)
   }
 
-  fn update_path_entry(self, info: NewMediaFileInfo, db_info: MediaFileInfo) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
+  fn update_path_entry(self, info: &NewMediaFileInfo, db_info: MediaFileInfo) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
     let id = db_info.id;
 
     macro_rules! check_fields {
@@ -135,7 +134,7 @@ impl FileProcessor {
 
       debug!("updating mbid (now: {} - last_check: {:?} = {})", now, last_check, difference);
       let conn = Arc::clone(&self.conn);
-      let fetch_fingerprint = acoustid.parse_file(db_info.path.clone())
+      let fetch_fingerprint = acoustid.parse_file(&db_info.path)
         .and_then(move |mbid| -> Box<Future<Item = (), Error = ProcessorError>> {
           trace!("update_file_uuid({}, {:?})", id, mbid);
           match mbid {

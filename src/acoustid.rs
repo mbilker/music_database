@@ -102,9 +102,10 @@ impl AcoustId {
       })
   }
 
-  pub fn parse_file(&self, path: String) -> impl Future<Item = Option<Uuid>, Error = ProcessorError> {
+  pub fn parse_file(&self, path: &str) -> impl Future<Item = Option<Uuid>, Error = ProcessorError> {
     let api_key = self.api_key.clone();
     let client = Rc::clone(&self.client);
+    let path = path.to_owned();
     let mut ratelimit = self.ratelimit.borrow().clone();
 
     let path2 = path.clone();
