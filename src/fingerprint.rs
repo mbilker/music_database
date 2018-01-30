@@ -74,7 +74,7 @@ pub fn get(path: &str) -> Result<(f64, String), ProcessorError> {
   // Initialize Chromaprint context
   let mut chroma = Chromaprint::new();
   if !chroma.start(samplerate as i32, channels) {
-    return Err(ProcessorError::ChromaprintError("failed to start chromaprint".to_owned()));
+    return Err(ProcessorError::Chromaprint("failed to start chromaprint"));
   }
 
   // Buffer frame for the current decoded packet
@@ -125,7 +125,7 @@ pub fn get(path: &str) -> Result<(f64, String), ProcessorError> {
       let data = processed.data(0);
       trace!("data_size: {}, data.len(): {}", data_size, data.len());
       if !chroma.feed(&data[0..data_size]) {
-        return Err(ProcessorError::ChromaprintError("feed returned false".to_owned()));
+        return Err(ProcessorError::Chromaprint("feed returned false"));
       }
     }
 
@@ -143,7 +143,7 @@ pub fn get(path: &str) -> Result<(f64, String), ProcessorError> {
 
     Ok((duration, fingerprint))
   } else {
-    Err(ProcessorError::ChromaprintError("no fingerprint generated".to_owned()))
+    Err(ProcessorError::Chromaprint("no fingerprint generated"))
   }
 }
 

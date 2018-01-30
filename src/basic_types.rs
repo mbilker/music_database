@@ -1,10 +1,12 @@
+use std::io;
+
+use std::error::Error;
+
 use ffmpeg;
 use hyper;
-use serde_json::Error as SerdeJsonError;
+use serde_json;
 
 use uuid::Uuid;
-
-use std::io;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct AcoustIdArtist {
@@ -33,44 +35,38 @@ pub struct AcoustIdResponse {
   pub results: Option<Vec<AcoustIdResult>>,
 }
 
-#[derive(Debug)]
-pub enum ProcessorError {
-  NothingUseful,
+quick_error! {
+  #[derive(Debug)]
+  pub enum ProcessorError {
+    NothingUseful {}
 
-  ApiKeyError,
-  NoFingerprintMatch,
-  NoAudioStream,
+    ApiKey {}
+    NoFingerprintMatch {}
+    NoAudioStream {}
 
-  HyperError(hyper::Error),
-  JsonError(SerdeJsonError),
-  IoError(io::Error),
-  ThreadError(String),
-  MutexError(String),
+    HyperError(err: hyper::Error) {
+      from()
+      cause(err)
+      display(me) -> ("{}: {}", me.description(), err)
+    }
+    JsonError(err: serde_json::Error) {
+      from()
+      cause(err)
+      display(me) -> ("{}: {}", me.description(), err)
+    }
+    Io(err: io::Error) {
+      from()
+      cause(err)
+      display(me) -> ("{}: {}", me.description(), err)
+    }
+    FFmpeg(err: ffmpeg::Error) {
+      from()
+      cause(err)
+      display(me) -> ("{} {}", me.description(), err)
+    }
+    Chromaprint(s: &'static str) {}
 
-  FFmpegError(ffmpeg::Error),
-  ChromaprintError(String),
-}
-
-impl From<hyper::Error> for ProcessorError {
-  fn from(value: hyper::Error) -> ProcessorError {
-    ProcessorError::HyperError(value)
-  }
-}
-
-impl From<SerdeJsonError> for ProcessorError {
-  fn from(value: SerdeJsonError) -> ProcessorError {
-    ProcessorError::JsonError(value)
-  }
-}
-
-impl From<io::Error> for ProcessorError {
-  fn from(value: io::Error) -> ProcessorError {
-    ProcessorError::IoError(value)
-  }
-}
-
-impl From<ffmpeg::Error> for ProcessorError {
-  fn from(value: ffmpeg::Error) -> ProcessorError {
-    ProcessorError::FFmpegError(value)
+    Thread(s: &'static str) {}
+    Mutex(s: &'static str) {}
   }
 }

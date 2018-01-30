@@ -58,7 +58,7 @@ fn print_fingerprint(api_key: &str, lookup: bool, path: &str) {
       .build(&core.handle());
     let client = Rc::new(client);
 
-    let future = AcoustId::lookup(api_key, duration, &fingerprint, &client);
+    let future = AcoustId::lookup(api_key, &client, duration, &fingerprint);
 
     match core.run(future) {
       Ok(res) => {

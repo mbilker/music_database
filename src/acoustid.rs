@@ -61,10 +61,7 @@ impl AcoustId {
       .map_err(ProcessorError::from)?;
     debug!("v: {:?}", v);
 
-    let mut results = match v.results {
-      Some(v) => v,
-      None => return Err(ProcessorError::NoFingerprintMatch),
-    };
+    let mut results = try!(v.results.ok_or(ProcessorError::NoFingerprintMatch));
 
     results.sort_by(|a, b| {
       if b.score > a.score {
@@ -76,20 +73,17 @@ impl AcoustId {
       }
     });
 
-    if let Some(first_result) = results.first() {
-      debug!("top result: {:?}", first_result);
+    let first_result = try!(results.first().ok_or(ProcessorError::NoFingerprintMatch));
+    debug!("top result: {:?}", first_result);
 
-      Ok(first_result.clone())
-    } else {
-      Err(ProcessorError::NoFingerprintMatch)
-    }
+    Ok(first_result.clone())
   }
 
   pub fn lookup(
     api_key: &str,
+    client: &Rc<Client<HttpsConnector<HttpConnector>>>,
     duration: f64,
-    fingerprint: &str,
-    client: &Rc<Client<HttpsConnector<HttpConnector>>>
+    fingerprint: &str
   ) -> impl Future<Item = AcoustIdResult, Error = ProcessorError> {
     let url = format!("{base}?format=json&client={apiKey}&duration={duration:.0}&fingerprint={fingerprint}&meta=recordings",
       base=LOOKUP_URL,
@@ -97,8 +91,6 @@ impl AcoustId {
       duration=duration,
       fingerprint=fingerprint
     ).parse().unwrap();
-
-    let client = Rc::clone(client);
 
     client.get(url)
       .map_err(ProcessorError::from)
@@ -127,15 +119,13 @@ impl AcoustId {
 
     fingerprint
       .and_then(move |(duration, fingerprint)| {
-        Self::lookup(&api_key, duration, &fingerprint, &client)
+        Self::lookup(&api_key, &client, duration, &fingerprint)
       })
       .and_then(|result| {
-        if let Some(recordings) = result.recordings {
-          let first = recordings.first().unwrap();
-          return Ok(Some(first.id));
-        }
+        let recordings = try!(result.recordings.ok_or(ProcessorError::NoFingerprintMatch));
+        let first = try!(recordings.first().ok_or(ProcessorError::NoFingerprintMatch));
 
-        Ok(None)
+        Ok(Some(first.id))
       })
       .or_else(move |e| match e {
         ProcessorError::NoAudioStream => {
@@ -143,7 +133,7 @@ impl AcoustId {
           Ok(None)
         },
         ProcessorError::NoFingerprintMatch => Ok(None),
-        ProcessorError::FFmpegError(e) => {
+        ProcessorError::FFmpeg(e) => {
           error!("path: {}, ffmpeg error: {}", path2, e);
           Ok(None)
         },
