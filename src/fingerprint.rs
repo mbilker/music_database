@@ -1,6 +1,8 @@
 use chromaprint::Chromaprint;
 use ffmpeg::ChannelLayout;
+use ffmpeg::decoder::Audio as AudioDecoder;
 use ffmpeg::format::{self, Sample};
+use ffmpeg::format::context::Input;
 use ffmpeg::frame::Audio;
 use ffmpeg::media::Type;
 use ffmpeg::software;
@@ -10,41 +12,38 @@ use basic_types::*;
 // Maximum duration global from Chromaprint's fpcalc utility
 static MAX_AUDIO_DURATION: f64 = 120.0;
 
-pub fn get(path: &str) -> Result<(f64, String), ProcessorError> {
-  debug!("Chromaprint version: {}", Chromaprint::version());
+fn get_best_audio_stream(ictx: &Input) -> Result<(AudioDecoder, f64, usize), ProcessorError> {
+  let stream = try!(ictx.streams().best(Type::Audio).ok_or(ProcessorError::NoAudioStream));
+  let duration = stream.duration() as f64 * f64::from(stream.time_base());
+  let index = stream.index();
+  debug!("best audio stream index: {}", index);
 
-  let mut ictx = try!(format::input(&path));
+  let codec = stream.codec();
+  debug!("medium: {:?}", codec.medium());
+  debug!("id: {:?}", codec.id());
 
-  let duration;
-  let index;
-  let mut decoder = {
-    let stream = match ictx.streams().best(Type::Audio) {
-      Some(v) => v,
-      None => return Err(ProcessorError::NoAudioStream),
-    };
-
-    duration = stream.duration() as f64 * f64::from(stream.time_base());
-    index = stream.index();
-    debug!("best audio stream index: {}", index);
-
-    let codec = stream.codec();
-    debug!("medium: {:?}", codec.medium());
-    debug!("id: {:?}", codec.id());
-
-    let mut decoder = try!(stream.codec().decoder().audio());
-    try!(decoder.set_parameters(stream.parameters()));
-
-    decoder
-  };
-
-  let samplerate = decoder.rate();
-  let channels = i32::from(decoder.channels());
+  let mut decoder = try!(stream.codec().decoder().audio());
+  try!(decoder.set_parameters(stream.parameters()));
 
   // Check for empty channel layout and set to a default one for the number
   // of channels
   if decoder.channel_layout().channels() == 0 {
+    let channels = i32::from(decoder.channels());
+
     decoder.set_channel_layout(ChannelLayout::default(channels));
   }
+
+  Ok((decoder, duration, index))
+}
+
+pub fn get(path: &str) -> Result<(f64, String), ProcessorError> {
+  debug!("Chromaprint version: {}", Chromaprint::version());
+
+  let mut ictx = try!(format::input(&path));
+  let (mut decoder, duration, index) = try!(get_best_audio_stream(&ictx));
+
+  let samplerate = decoder.rate();
+  let channels = i32::from(decoder.channels());
 
   debug!("duration: {}", duration);
   debug!("bit_rate: {}", decoder.bit_rate());
@@ -137,14 +136,10 @@ pub fn get(path: &str) -> Result<(f64, String), ProcessorError> {
   let finish_res = chroma.finish();
   debug!("finish_res: {}", finish_res);
 
-  let fingerprint = chroma.fingerprint();
-  if let Some(fingerprint) = fingerprint {
-    debug!("fingerprint: {}", fingerprint);
+  let fingerprint = try!(chroma.fingerprint().ok_or(ProcessorError::Chromaprint("no fingerprint generated")));
+  debug!("fingerprint: {}", fingerprint);
 
-    Ok((duration, fingerprint))
-  } else {
-    Err(ProcessorError::Chromaprint("no fingerprint generated"))
-  }
+  Ok((duration, fingerprint))
 }
 
 #[cfg(test)]
