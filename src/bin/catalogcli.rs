@@ -7,11 +7,11 @@ extern crate pretty_env_logger;
 extern crate ratelimit;
 extern crate tokio_core;
 
-#[macro_use]
-extern crate log;
+#[macro_use] extern crate log;
 
 extern crate music_card_catalog;
 
+use std::env;
 use std::rc::Rc;
 
 use clap::{App, Arg, SubCommand};
@@ -74,10 +74,17 @@ fn print_fingerprint(api_key: &str, lookup: bool, path: &str) {
 // Main entrypoint for the program
 fn main() {
   // Initialize libraries
-  pretty_env_logger::init();
   dotenv().ok();
+
+  // Set a default log level
+  if env::var("RUST_LOG").is_err() {
+    env::set_var("RUST_LOG", "music_card_catalog=info");
+  }
+
+  pretty_env_logger::init();
   ffmpeg::init().unwrap();
 
+  log::set_max_level(log::LevelFilter::Debug);
   let matches = App::new("Music Card Catalog")
     .version("0.1.0")
     .author("Matt Bilker <me@mbilker.us>")
