@@ -38,9 +38,9 @@ impl ElasticSearch {
   //
   // (Why do I have to create separate inner functions to get the type checker
   // figure out this?)
-  pub fn ensure_index_exists(&self) -> impl Future<Item = (), Error = ()> + 'static {
+  pub fn ensure_index_exists(&self) -> impl Future<Item = (), Error = ElasticError> + 'static {
     // Create the index
-    fn create_index(client: &AsyncClient) -> impl Future<Item = (), Error = ()> {
+    fn create_index(client: &AsyncClient) -> impl Future<Item = (), Error = ElasticError> {
       info!("Elasticsearch index does not exist, creating index");
 
       client.index_create(INDEX_NAME.into())
@@ -50,19 +50,13 @@ impl ElasticSearch {
           info!("Index created with response: {:?}", res);
           Ok(())
         })
-        .map_err(|err| {
-          error!("Index creation failed with error: {:#?}", err);
-        })
     }
 
     // Handle other response codes when the response code is not 200 or 404
-    fn handle_other_response(exists: AsyncResponseBuilder) -> impl Future<Item = (), Error = ()> {
+    fn handle_other_response(exists: AsyncResponseBuilder) -> impl Future<Item = (), Error = ElasticError> {
       exists.into_response::<CommandResponse>()
         .map(|res| {
           info!("handle_other_response res: {:#?}", res);
-        })
-        .map_err(|err| {
-          error!("handle_other_response err: {:#?}", err);
         })
     }
 
@@ -73,12 +67,7 @@ impl ElasticSearch {
     self.client
       .request(IndicesExistsRequest::for_index(INDEX_NAME))
       .send()
-      .map_err(|err| {
-        error!("ensure_index_exists err: {:#?}", err);
-      })
-      // TODO(mbilker): does the `and_then` get called if there is a `map_err`
-      // before it?
-      .and_then(move |exists| -> Box<Future<Item = (), Error = ()>> {
+      .and_then(move |exists| -> Box<Future<Item = (), Error = ElasticError>> {
         // Only create the index on 404 and print out details for non-200
         // response codes
         match exists.status() {
