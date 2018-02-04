@@ -1,4 +1,7 @@
-use chrono::{DateTime, Utc};
+use std::fs;
+use std::time::UNIX_EPOCH;
+
+use chrono::{DateTime, TimeZone, Utc};
 use diesel::sql_types::Integer;
 use mediainfo::MediaInfo;
 use uuid::Uuid;
@@ -16,6 +19,8 @@ pub struct NewMediaFileInfo {
   pub track: Option<String>,
   pub track_number: u32,
   pub duration: u32,
+
+  pub mtime: Option<DateTime<Utc>>,
 }
 
 #[derive(Clone, Debug, Queryable, Identifiable)]
@@ -33,6 +38,8 @@ pub struct MediaFileInfo {
   pub duration: u32,
 
   pub mbid: Option<Uuid>,
+
+  pub mtime: Option<DateTime<Utc>>,
 }
 
 #[derive(Queryable, Identifiable, Associations)]
@@ -131,6 +138,15 @@ impl NewMediaFileInfo {
       Err(_) => media_info.get_with_default_options("FileName").ok()
     };
 
+    // Get file modification time
+    let mtime = fs::metadata(path).ok().and_then(|meta| {
+      meta.modified().ok()
+    }).and_then(|time| {
+      time.duration_since(UNIX_EPOCH).ok()
+    }).map(|duration| {
+      Utc.timestamp(duration.as_secs() as i64, duration.subsec_nanos())
+    });
+
     // Store the most relevant details in a struct for easy access
     let file_info = NewMediaFileInfo {
       path:         path.to_owned(),
@@ -141,6 +157,8 @@ impl NewMediaFileInfo {
       track:        media_info.get_track_name().ok(),
       track_number: media_info.get_track_number().unwrap_or(0),
       duration:     duration,
+
+      mtime:        mtime,
     };
 
     media_info.close();

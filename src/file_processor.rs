@@ -93,7 +93,7 @@ impl FileProcessor {
 
     // Update the database with the file metadata read from the actual file
     // if the database entry differs from the read file metadata
-    let needs_update = check_fields!(title, artist, album, track, track_number, duration);
+    let needs_update = check_fields!(title, artist, album, track, track_number, duration, mtime);
     let update_future: Box<Future<Item = MediaFileInfo, Error = ProcessorError> + Send> = if needs_update {
       info!("not equal, info: {:#?}, db_info: {:#?}", info, db_info);
 

@@ -17,6 +17,7 @@ table! {
         track_number -> Oid,
         duration -> Oid,
         mbid -> Nullable<Uuid>,
+        mtime -> Nullable<Timestamptz>,
     }
 }
 
