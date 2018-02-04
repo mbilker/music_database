@@ -1,4 +1,3 @@
-use std::io;
 use std::sync::Arc;
 
 use futures::Future;
@@ -40,11 +39,9 @@ impl FileProcessor {
     // Get the previous value from the database if it exists
     let fetch_future = wrap_err!(self.conn.fetch_file(path));
 
-    let future = fetch_future.and_then(move |db_info| {
-      match db_info {
-        Some(v) => self.update_path_entry(&info, v),
-           None => self.insert_path_entry(&info),
-      }
+    let future = fetch_future.and_then(move |db_info| match db_info {
+      Some(v) => self.update_path_entry(&info, v),
+         None => self.insert_path_entry(&info),
     });
 
     Box::new(future)
@@ -56,28 +53,24 @@ impl FileProcessor {
     let path = info.path.clone();
     let conn = Arc::clone(&self.conn);
 
-    let add_future = wrap_err!(self.conn.insert_file(info));
+    let future = wrap_err!(self.conn.insert_file(info))
+      .and_then(move |info| {
+        let id = info.id;
 
-    let future = add_future.and_then(move |_| {
-      let acoustid_future = self.acoustid.parse_file(&path);
-      let info_future = wrap_err!(self.conn.fetch_file(path)).and_then(|info| {
-        // If a database row is not returned after adding it, there is an issue and the
-        // error is appropriate here
-        info.ok_or(ProcessorError::NothingUseful)
+        let last_check = wrap_err!(self.conn.add_acoustid_last_check(id, Utc::now()));
+        let acoustid = self.acoustid.parse_file(&path)
+          .and_then(move |mbid| {
+            wrap_err!(conn.update_file_uuid(id, mbid))
+          })
+          .or_else(|err| match err {
+            ProcessorError::NoFingerprintMatch => Ok(()),
+            _ => Err(err),
+          });
+
+        last_check
+          .join(acoustid)
+          .and_then(|(_, _)| Ok(info))
       });
-
-      acoustid_future.join(info_future)
-    }).and_then(move |(mbid, info)| {
-      let last_check = conn.add_acoustid_last_check(info.id, Utc::now());
-      let uuid: Box<Future<Item = (), Error = io::Error>> = match mbid {
-        Some(mbid) => Box::new(conn.update_file_uuid(info.id, mbid)),
-        None => Box::new(future::ok(())),
-      };
-
-      wrap_err!(last_check
-        .join(uuid))
-        .and_then(|(_, _)| Ok(info))
-    });
 
     Box::new(future)
   }
@@ -129,51 +122,49 @@ impl FileProcessor {
 
     debug!("id: {}, path: {}, no associated mbid", db_info.id, db_info.path);
 
-    let acoustid = Arc::clone(&self.acoustid);
-
     let last_check = wrap_err!(self.conn.get_acoustid_last_check(db_info));
     let joined = update_future.join(last_check);
 
     // Must use trait object or rust will not detect the correct boxing
-    let future = joined.and_then(move |(db_info, last_check)| -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
-      let id = db_info.id;
+    let future = joined.and_then(move |(db_info, last_check)| self.handle_acoustid(db_info, last_check));
 
-      let now: DateTime<Utc> = Utc::now();
-      let difference = now.timestamp() - last_check.unwrap_or_else(|| Utc.timestamp(0, 0)).timestamp();
+    Box::new(future)
+  }
 
-      // 2 weeks = 1,209,600 seconds
-      if difference < 1_209_600 {
-        debug!("id: {}, path: {}, last check within 2 weeks, not re-checking", id, db_info.path);
-        return Box::new(future::ok(db_info));
-      }
+  fn handle_acoustid(self, db_info: MediaFileInfo, last_check: Option<DateTime<Utc>>) -> Box<Future<Item = MediaFileInfo, Error = ProcessorError>> {
+    let id = db_info.id;
 
-      info!("id: {}, path: {}, checking for mbid match", id, db_info.path);
+    let now: DateTime<Utc> = Utc::now();
+    let difference = now.timestamp() - last_check.unwrap_or_else(|| Utc.timestamp(0, 0)).timestamp();
 
-      debug!("updating mbid (now: {} - last_check: {:?} = {})", now, last_check, difference);
-      let conn = Arc::clone(&self.conn);
-      let fetch_fingerprint = acoustid.parse_file(&db_info.path)
-        .and_then(move |mbid| -> Box<Future<Item = (), Error = ProcessorError>> {
-          trace!("update_file_uuid({}, {:?})", id, mbid);
-          match mbid {
-            Some(mbid) => {
-              debug!("id: {}, new mbid: {}", id, mbid);
-              Box::new(wrap_err!(conn.update_file_uuid(id, mbid)))
-            },
-            None => Box::new(future::ok(())),
-          }
-        });
+    // 2 weeks = 1,209,600 seconds
+    if difference < 1_209_600 {
+      debug!("id: {}, path: {}, last check within 2 weeks, not re-checking", id, db_info.path);
+      return Box::new(future::ok(db_info));
+    }
 
-      let last_check = wrap_err!(match last_check {
-        Some(_) => self.conn.update_acoustid_last_check(id, now),
-           None => self.conn.add_acoustid_last_check(id, now),
+    info!("id: {}, path: {}, checking for mbid match", id, db_info.path);
+    debug!("updating mbid (now: {} - last_check: {:?} = {})", now, last_check, difference);
+
+    let conn = Arc::clone(&self.conn);
+    let fetch_fingerprint = self.acoustid.parse_file(&db_info.path)
+      .and_then(move |mbid| {
+        debug!("id: {}, new mbid: {}", id, mbid);
+        wrap_err!(conn.update_file_uuid(id, mbid))
+      })
+      .or_else(|err| match err {
+        ProcessorError::NoFingerprintMatch => Ok(()),
+        _ => Err(err),
       });
 
-      let future = last_check
-        .join(fetch_fingerprint)
-        .and_then(|(_, _)| Ok(db_info));
-
-      Box::new(future)
+    let last_check = wrap_err!(match last_check {
+      Some(_) => self.conn.update_acoustid_last_check(id, now),
+         None => self.conn.add_acoustid_last_check(id, now),
     });
+
+    let future = last_check
+      .join(fetch_fingerprint)
+      .and_then(|(_, _)| Ok(db_info));
 
     Box::new(future)
   }

@@ -102,7 +102,7 @@ impl AcoustId {
       })
   }
 
-  pub fn parse_file(&self, path: &str) -> impl Future<Item = Option<Uuid>, Error = ProcessorError> {
+  pub fn parse_file(&self, path: &str) -> impl Future<Item = Uuid, Error = ProcessorError> {
     let api_key = self.api_key.clone();
     let client = Rc::clone(&self.client);
     let path = path.to_owned();
@@ -126,17 +126,16 @@ impl AcoustId {
         let recordings = try!(result.recordings.ok_or(ProcessorError::NoFingerprintMatch));
         let first = try!(recordings.first().ok_or(ProcessorError::NoFingerprintMatch));
 
-        Ok(Some(first.id))
+        Ok(first.id)
       })
       .or_else(move |e| match e {
         ProcessorError::NoAudioStream => {
           error!("path: {}, weird case with no audio stream during fingerprinting (bad extension?)", path2);
-          Ok(None)
+          Err(ProcessorError::NoFingerprintMatch)
         },
-        ProcessorError::NoFingerprintMatch => Ok(None),
         ProcessorError::FFmpeg(e) => {
           error!("path: {}, ffmpeg error: {}", path2, e);
-          Ok(None)
+          Err(ProcessorError::NoFingerprintMatch)
         },
         _ => Err(e),
       })
