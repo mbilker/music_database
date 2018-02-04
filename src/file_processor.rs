@@ -91,11 +91,28 @@ impl FileProcessor {
       }
     }
 
+    macro_rules! is_field_not_equal {
+      ($x:ident) => {
+        if info.$x != db_info.$x {
+          let name = stringify!($x);
+          debug!("id: {}, field not equal: info.{} = {:?}, db_info.{} = {:?}", id, name, info.$x, name, db_info.$x);
+        }
+      }
+    }
+
     // Update the database with the file metadata read from the actual file
     // if the database entry differs from the read file metadata
     let needs_update = check_fields!(title, artist, album, track, track_number, duration, mtime);
     let update_future: Box<Future<Item = MediaFileInfo, Error = ProcessorError> + Send> = if needs_update {
       info!("not equal, info: {:#?}, db_info: {:#?}", info, db_info);
+
+      is_field_not_equal!(title);
+      is_field_not_equal!(artist);
+      is_field_not_equal!(album);
+      is_field_not_equal!(track);
+      is_field_not_equal!(track_number);
+      is_field_not_equal!(duration);
+      is_field_not_equal!(mtime);
 
       Box::new(
         wrap_err!(self.conn.update_file(id, info.clone()))

@@ -1,0 +1,1 @@
+ALTER TABLE library ALTER COLUMN mtime SET NOT NULL;

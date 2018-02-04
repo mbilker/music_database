@@ -12,6 +12,7 @@ use schema::{acoustid_last_checks, library};
 #[table_name="library"]
 pub struct NewMediaFileInfo {
   pub path: String,
+  pub mtime: DateTime<Utc>,
 
   pub title: Option<String>,
   pub artist: Option<String>,
@@ -19,8 +20,6 @@ pub struct NewMediaFileInfo {
   pub track: Option<String>,
   pub track_number: u32,
   pub duration: u32,
-
-  pub mtime: Option<DateTime<Utc>>,
 }
 
 #[derive(Clone, Debug, Queryable, Identifiable)]
@@ -39,7 +38,7 @@ pub struct MediaFileInfo {
 
   pub mbid: Option<Uuid>,
 
-  pub mtime: Option<DateTime<Utc>>,
+  pub mtime: DateTime<Utc>,
 }
 
 #[derive(Queryable, Identifiable, Associations)]
@@ -144,12 +143,15 @@ impl NewMediaFileInfo {
     }).and_then(|time| {
       time.duration_since(UNIX_EPOCH).ok()
     }).map(|duration| {
-      Utc.timestamp(duration.as_secs() as i64, duration.subsec_nanos())
-    });
+      // Reduce precision of nanoseconds to microseconds because PostgreSQL
+      // does not store the same amount of precision
+      Utc.timestamp(duration.as_secs() as i64, (duration.subsec_nanos() / 1000) * 1000)
+    }).expect(&format!("Unable to get modification time for path: {}", path));
 
     // Store the most relevant details in a struct for easy access
     let file_info = NewMediaFileInfo {
       path:         path.to_owned(),
+      mtime:        mtime,
 
       title:        title,
       artist:       media_info.get_performer().ok(),
@@ -157,8 +159,6 @@ impl NewMediaFileInfo {
       track:        media_info.get_track_name().ok(),
       track_number: media_info.get_track_number().unwrap_or(0),
       duration:     duration,
-
-      mtime:        mtime,
     };
 
     media_info.close();
