@@ -1,3 +1,4 @@
+extern crate chrono;
 extern crate clap;
 extern crate dotenv;
 extern crate ffmpeg;
@@ -14,6 +15,7 @@ extern crate music_card_catalog;
 use std::env;
 use std::rc::Rc;
 
+use chrono::{TimeZone, Utc};
 use clap::{App, Arg, SubCommand};
 use dotenv::dotenv;
 use hyper::Client;
@@ -40,6 +42,7 @@ fn print_file_info(path: &str) {
     println!("Track: {}", info.track.unwrap_or_else(String::new));
     println!("Track Number: {}", info.track_number);
     println!("Duration: {} ms", info.duration);
+    println!("Modified Time: {}", info.mtime.unwrap_or_else(|| Utc.timestamp(0, 0)));
   } else {
     println!("No info could be gathered from the file");
   }
