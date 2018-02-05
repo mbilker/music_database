@@ -13,7 +13,6 @@ use database::DatabaseConnection;
 use elasticsearch::ElasticSearch;
 use file_scanner;
 use file_processor::FileProcessor;
-use models::NewMediaFileInfo;
 
 use basic_types::*;
 
@@ -108,19 +107,10 @@ impl<'a> Processor<'a> {
       let conn = Arc::clone(&self.conn);
       let search = Arc::clone(&self.search);
 
-      let handler = stream::iter_ok(files).and_then(|file| {
-        thread_pool.spawn_fn(move || {
-          // A None value indicates a non-valid file instead of an error
-          Ok(NewMediaFileInfo::read_file(&file))
-        })
-      }).filter_map(|info| {
-        info
-      }).and_then(move |info| {
-        let acoustid = Arc::clone(&acoustid);
-        let conn = Arc::clone(&conn);
-
-        let worker = FileProcessor::new(&acoustid, &conn);
-        worker.call(info)
+      let handler = stream::iter_ok(files).and_then(move |file| {
+        let thread_pool = thread_pool.clone();
+        let worker = FileProcessor::new(&acoustid, &conn, thread_pool);
+        worker.call(file)
       }).and_then(move |info| {
         let doc = info.to_document();
 
@@ -133,6 +123,9 @@ impl<'a> Processor<'a> {
             trace!("elastic insert res: {:?}", res);
             Ok(())
           })
+      }).or_else(|err| match err {
+        ProcessorError::NothingUseful => Ok(()),
+        _ => Err(err),
       }).for_each(|_| {
         Ok(())
       });
