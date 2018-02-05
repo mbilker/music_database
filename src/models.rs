@@ -73,6 +73,19 @@ pub struct MediaFileInfoDocument {
 }
 
 impl NewMediaFileInfo {
+  // Get file modification time
+  pub fn get_mtime(path: &str) -> DateTime<Utc> {
+    fs::metadata(path).ok().and_then(|meta| {
+      meta.modified().ok()
+    }).and_then(|time| {
+      time.duration_since(UNIX_EPOCH).ok()
+    }).map(|duration| {
+      // Reduce precision of nanoseconds to microseconds because PostgreSQL
+      // does not store the same amount of precision
+      Utc.timestamp(duration.as_secs() as i64, (duration.subsec_nanos() / 1000) * 1000)
+    }).expect(&format!("Unable to get modification time for path: {}", path))
+  }
+
   pub fn read_file(path: &str) -> Option<Self> {
     let mut media_info: MediaInfo = MediaInfo::new();
 
@@ -138,15 +151,7 @@ impl NewMediaFileInfo {
     };
 
     // Get file modification time
-    let mtime = fs::metadata(path).ok().and_then(|meta| {
-      meta.modified().ok()
-    }).and_then(|time| {
-      time.duration_since(UNIX_EPOCH).ok()
-    }).map(|duration| {
-      // Reduce precision of nanoseconds to microseconds because PostgreSQL
-      // does not store the same amount of precision
-      Utc.timestamp(duration.as_secs() as i64, (duration.subsec_nanos() / 1000) * 1000)
-    }).expect(&format!("Unable to get modification time for path: {}", path));
+    let mtime = Self::get_mtime(path);
 
     // Store the most relevant details in a struct for easy access
     let file_info = NewMediaFileInfo {
