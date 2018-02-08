@@ -153,6 +153,9 @@ impl FileProcessor {
     };
 
     // Return early if the entry already has a MusicBrainz ID associated with it
+    //
+    // TODO(mbilker): with the mtime check, should the mbid be cleared? Should it only be
+    // cleared if the metadata has changed?
     if let Some(mbid) = db_info.mbid {
       debug!("id: {}, path: {}, associated mbid: {:?}", db_info.id, db_info.path, mbid);
       return update_future;
