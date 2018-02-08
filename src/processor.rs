@@ -11,7 +11,7 @@ use acoustid::AcoustId;
 use config::Config;
 use database::DatabaseConnection;
 use elasticsearch::ElasticSearch;
-use file_scanner;
+use scanner;
 use file_processor::FileProcessor;
 
 use basic_types::*;
@@ -96,7 +96,7 @@ impl<'a> Processor<'a> {
     for path in self.paths {
       println!("Scanning {}", path);
 
-      let dir_walk = file_scanner::scan_dir(path);
+      let dir_walk = scanner::scan_dir(path);
       let files: Vec<String> = dir_walk.to_vec();
 
       debug!("files length: {}", files.len());
