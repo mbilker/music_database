@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use futures::{Future, Stream};
+use futures::future::{self, Loop};
 use futures_cpupool::CpuPool;
 //use futures_ratelimit::RatelimitFuture;
 use hyper::Client;
@@ -106,20 +107,27 @@ impl AcoustId {
     let api_key = self.api_key.clone();
     let client = Rc::clone(&self.client);
     let path = path.to_owned();
-    let mut ratelimit = self.ratelimit.borrow().clone();
+    let ratelimit = self.ratelimit.borrow().clone();
 
     let path2 = path.clone();
 
-    let fingerprint = self.thread_pool.spawn_fn(move || {
-      ratelimit.wait();
+    let ratelimit = future::loop_fn(ratelimit, |mut ratelimit| {
+      if ratelimit.try_wait().is_ok() {
+        Ok(Loop::Break(ratelimit))
+      } else {
+        Ok(Loop::Continue(ratelimit))
+      }
+    });
 
+    let fingerprint = self.thread_pool.spawn_fn(move || {
       // Eat up fingerprinting errors, I mostly see them when a file is not easily
       // parsed like WAV files
       fingerprint::get(&path)
     });
 
     fingerprint
-      .and_then(move |(duration, fingerprint)| {
+      .join(ratelimit)
+      .and_then(move |((duration, fingerprint), _)| {
         Self::lookup(&api_key, &client, duration, &fingerprint)
       })
       .and_then(|result| {
