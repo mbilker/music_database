@@ -16,7 +16,6 @@ fallible-iterator = "~0.1.4"
 ffmpeg = { git = "https://github.com/meh/rust-ffmpeg.git" }
 futures = "0.1.18"
 futures-cpupool = "0.1.8"
-futures-ratelimit = { git = "https://github.com/mbilker/futures-ratelimit.git" }
 hyper = "~0.11.7"
 hyper-tls = "~0.1.2"
 log = "0.4.1"

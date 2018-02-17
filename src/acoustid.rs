@@ -7,7 +7,6 @@ use std::time::Duration;
 use futures::{Future, Stream};
 use futures::future::{self, Loop};
 use futures_cpupool::CpuPool;
-//use futures_ratelimit::RatelimitFuture;
 use hyper::Client;
 use hyper::client::HttpConnector;
 use hyper_tls::HttpsConnector;
