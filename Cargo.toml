@@ -9,7 +9,7 @@ chrono = "~0.4.0"
 clap = "2.29.2"
 crossbeam = "~0.3.0"
 diesel = { version = "1.1.1", default-features = false, features = ["chrono", "postgres", "r2d2", "serde_json", "uuid"] }
-dotenv  = "~0.10.1"
+dotenv  = "0.11"
 elastic = "~0.20.5"
 elastic_derive = "~0.20.5"
 fallible-iterator = "~0.1.4"
@@ -31,10 +31,7 @@ serde_json = "1.0.9"
 serde_yaml = "0.7.3"
 tokio-core = "0.1.12"
 uuid = { version = "0.5.1", features = ["serde", "v4"] }
-walkdir = "~2.0.1"
-
-[dev-dependencies]
-clippy = "0.0.184"
+walkdir = "2.1"
 
 [profile.release]
 debug = true
