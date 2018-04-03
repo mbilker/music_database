@@ -1,4 +1,3 @@
-#![feature(conservative_impl_trait)]
 #![recursion_limit="128"]
 
 #![cfg_attr(test, feature(plugin))]
